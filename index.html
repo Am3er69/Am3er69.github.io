@@ -39,21 +39,54 @@
       padding: 10px;
       border-radius: 6px;
     }
+    .session-info {
+      font-size: 0.9em;
+      color: #7f8c8d;
+      margin-bottom: 8px;
+    }
+    button {
+      margin: 16px auto;
+      display: block;
+      padding: 10px 20px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:disabled {
+      background: #bdc3c7;
+      cursor: not-allowed;
+    }
+    #backtestResults {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      display: none;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>🔥 Daily Trading Signals (R1000 Optimized)</h2>
+    <div class="session-info">Session: <span id="sessionLabel">Loading...</span></div>
     <p class="loading" id="status">📡 Fetching real 1H & 4H market data...</p>
     <div id="tradesContainer"></div>
   </div>
+
+  <button id="backtestBtn" onclick="runBacktest()">
+    📊 Run Backtest (Last 90 Days)
+  </button>
+  <div id="backtestResults"></div>
 
   <script>
     const API_KEY = 'ec47de8969cb431b8ea24453c5c989f1';
     const PAIRS = [
       'EUR/USD', 'GBP/USD', 'USD/JPY',
       'AUD/USD', 'USD/CAD', 'USD/CHF',
-      'XAU/USD' // Gold
+      'XAU/USD'
     ];
     const ACCOUNT_BALANCE = 1000;
     const RISK_PERCENT = 1;
@@ -106,7 +139,7 @@
       return sma(tr, p);
     };
 
-    // === FETCH CANDLES ===
+    // === FETCH CANDLES (LIVE) ===
     async function fetchCandles(pair, interval) {
       const symbol = pair.replace('/', '');
       const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=200&apikey=${API_KEY}`;
@@ -143,7 +176,7 @@
     // === PIP SIZE HELPER ===
     function getPipSize(pair) {
       if (pair.includes('JPY')) return 0.01;
-      if (pair.includes('XAU')) return 0.1; // Gold quoted to 2 decimals (e.g., 2345.60)
+      if (pair.includes('XAU')) return 0.1;
       return 0.0001;
     }
 
@@ -153,11 +186,11 @@
       const pipSize = getPipSize(pair);
       const microLots = riskAmount / (slPips * 0.10);
       let score = 0;
-      score += 25; // trend
-      score += 20; // higher TF
-      score += 15; // RSI
-      score += Math.min(20, (rr - 1.0) * 12); // R:R bonus
-      score += scoreBonus; // e.g., +10 for candle pattern
+      score += 25;
+      score += 20;
+      score += 15;
+      score += Math.min(20, (rr - 1.0) * 12);
+      score += scoreBonus;
       const winProb = Math.min(95, score);
       let confidence = "Low";
       if (winProb >= 70) confidence = "High";
@@ -165,7 +198,7 @@
       return { pair, direction, entry, sl, tp, slPips, tpPips, rr, winProb, confidence, microLots };
     }
 
-    // === STRICT ANALYSIS (Primary) ===
+    // === STRICT ANALYSIS ===
     async function analyzePairStrict(pair) {
       const session = getCurrentSession();
       if (!isPairActiveInSession(pair, session)) return [];
@@ -175,12 +208,10 @@
       const candles4h = await fetchCandles(pair, '4h');
       if (!candles1h || !candles4h) return [];
 
-      // 4H Trend
       const ema50_4h = ema(candles4h.close, 50);
       const ema200_4h = ema(candles4h.close, 200);
       const higherTrend = ema50_4h.at(-1) > ema200_4h.at(-1) ? 'up' : 'down';
 
-      // 1H
       const c = candles1h.close;
       const h = candles1h.high;
       const l = candles1h.low;
@@ -196,7 +227,7 @@
       const latestAtr = atrs.at(-1);
       const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
 
-      if (latestAtr > atrAvg * 2 || latestAtr < atrAvg * 0.4) return [];
+      if (latestAtr > atrAvg * 2.2 || latestAtr < atrAvg * 0.35) return [];
 
       const prevHigh = h.at(-2);
       const prevLow = l.at(-2);
@@ -208,7 +239,6 @@
       const pipSize = getPipSize(pair);
       const trades = [];
 
-      // 🔹 Primary: Pullback + Breakout
       if (isUptrend && higherTrend === 'up' && bullishCandle && latestRsi > 50) {
         const sl = latestClose - latestAtr;
         const tp = latestClose + latestAtr * 2;
@@ -227,7 +257,6 @@
         if (rr >= 1.2) trades.push(buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 10));
       }
 
-      // 🔹 Secondary: Trend Continuation (no candle pattern needed)
       if (isUptrend && higherTrend === 'up' && latestRsi > 55 && latestRsi < 70) {
         const sl = latestEma50;
         const tp = latestClose + latestAtr * 1.8;
@@ -249,11 +278,10 @@
       return trades;
     }
 
-    // === RELAXED ANALYSIS (Fallback) ===
+    // === RELAXED ANALYSIS ===
     async function analyzePairRelaxed(pair) {
       const session = getCurrentSession();
       if (!isPairActiveInSession(pair, session)) return [];
-      // Skip news filter in relaxed mode (but keep ATR/trend)
 
       const candles1h = await fetchCandles(pair, '1h');
       const candles4h = await fetchCandles(pair, '4h');
@@ -278,15 +306,14 @@
       const latestAtr = atrs.at(-1);
       const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
 
-      if (latestAtr > atrAvg * 2.2 || latestAtr < atrAvg * 0.3) return [];
+      if (latestAtr > atrAvg * 2.5 || latestAtr < atrAvg * 0.25) return [];
 
       const isUptrend = latestEma50 > latestEma200;
       const isDowntrend = latestEma50 < latestEma200;
       const pipSize = getPipSize(pair);
       const trades = [];
 
-      // Relaxed: weaker RSI, no candle pattern
-      if (isUptrend && higherTrend === 'up' && latestRsi > 48) {
+      if (isUptrend && higherTrend === 'up' && latestRsi > 48 && latestRsi < 75) {
         const sl = latestClose - latestAtr * 1.1;
         const tp = latestClose + latestAtr * 1.6;
         const slPips = Math.abs(latestClose - sl) / pipSize;
@@ -298,7 +325,7 @@
         }
       }
 
-      if (isDowntrend && higherTrend === 'down' && latestRsi < 52) {
+      if (isDowntrend && higherTrend === 'down' && latestRsi < 52 && latestRsi > 25) {
         const sl = latestClose + latestAtr * 1.1;
         const tp = latestClose - latestAtr * 1.6;
         const slPips = Math.abs(sl - latestClose) / pipSize;
@@ -315,35 +342,39 @@
 
     // === MAIN SIGNAL GENERATOR ===
     async function generateDailySignals() {
-      document.getElementById('status').textContent = `🔍 Analyzing ${PAIRS.length} pairs (1H + 4H) • Session: ${getCurrentSession()}`;
-      let allTrades = [];
+      const session = getCurrentSession();
+      document.getElementById('sessionLabel').textContent = session;
+      document.getElementById('status').textContent = `🔍 Analyzing ${PAIRS.length} pairs (1H + 4H) • Session: ${session}`;
 
-      // Primary signals
+      let strictTrades = [];
+      let relaxedTrades = [];
+
       for (const pair of PAIRS) {
         const trades = await analyzePairStrict(pair);
-        allTrades = allTrades.concat(trades);
+        strictTrades = strictTrades.concat(trades);
         await new Promise(r => setTimeout(r, 100));
       }
 
-      // Fallback: if no signals, use relaxed mode
-      if (allTrades.length === 0) {
-        for (const pair of PAIRS) {
-          const trades = await analyzePairRelaxed(pair);
-          allTrades = allTrades.concat(trades);
-          await new Promise(r => setTimeout(r, 100));
-        }
-        // Keep only top 2 relaxed trades
-        allTrades.sort((a, b) => b.winProb - a.winProb);
-        allTrades = allTrades.slice(0, 2);
-      } else {
-        allTrades.sort((a, b) => b.winProb - a.winProb);
+      for (const pair of PAIRS) {
+        const trades = await analyzePairRelaxed(pair);
+        relaxedTrades = relaxedTrades.concat(trades);
+        await new Promise(r => setTimeout(r, 100));
       }
 
-      // Render
+      let allTrades = [...strictTrades];
+      const needed = Math.max(0, 3 - strictTrades.length);
+      if (needed > 0) {
+        relaxedTrades.sort((a, b) => b.winProb - a.winProb);
+        allTrades = allTrades.concat(relaxedTrades.slice(0, needed));
+      }
+
+      allTrades.sort((a, b) => b.winProb - a.winProb);
+      allTrades = allTrades.slice(0, 3);
+
       const container = document.getElementById('tradesContainer');
       if (allTrades.length === 0) {
         container.innerHTML = '<div class="error">🚫 No valid setups found. Market conditions extremely unfavorable.</div>';
-        document.getElementById('status').textContent = '✅ Analysis complete';
+        document.getElementById('status').textContent = '✅ Analysis complete – no signals';
         return;
       }
 
@@ -365,11 +396,139 @@
         `;
       });
       container.innerHTML = html;
-      document.getElementById('status').textContent = `✅ ${allTrades.length} opportunities ready`;
+      document.getElementById('status').textContent = `✅ ${allTrades.length} opportunity${allTrades.length !== 1 ? 's' : ''} ready`;
+
+      setTimeout(() => {
+        document.getElementById('status').textContent = '🔄 Auto-refreshing...';
+        generateDailySignals();
+      }, 30 * 60 * 1000);
     }
 
-    // === START ===
-    generateDailySignals();
-  </script>
-</body>
-</html>
+    // ==============================
+    // === BACKTESTING SECTION ===
+    // ==============================
+
+    async function fetchHistoricalCandles(pair, interval, days = 90) {
+      const symbol = pair.replace('/', '');
+      const chunks = [];
+      let endDate = new Date();
+      const candlesPerChunk = 200;
+      const daysPerChunk = interval === '1h' ? 8 : 32;
+      const chunksNeeded = Math.ceil(days / daysPerChunk);
+
+      for (let i = 0; i < chunksNeeded; i++) {
+        const dateStr = endDate.toISOString().split('T')[0];
+        const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=${candlesPerChunk}&end_date=${dateStr}&apikey=${API_KEY}`;
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.values && data.values.length > 0) {
+            const chunk = {
+              close: data.values.map(v => parseFloat(v.close)),
+              high: data.values.map(v => parseFloat(v.high)),
+              low: data.values.map(v => parseFloat(v.low)),
+              timestamp: data.values.map(v => new Date(v.datetime))
+            };
+            chunks.push(chunk);
+            const lastTime = new Date(data.values[data.values.length - 1].datetime);
+            endDate = new Date(lastTime.getTime() - 60000);
+          } else break;
+        } catch (e) {
+          console.error(`Backtest fetch error for ${pair} ${interval}:`, e);
+          break;
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      let merged = { close: [], high: [], low: [], timestamp: [] };
+      for (let i = chunks.length - 1; i >= 0; i--) {
+        merged.close.push(...chunks[i].close);
+        merged.high.push(...chunks[i].high);
+        merged.low.push(...chunks[i].low);
+        merged.timestamp.push(...chunks[i].timestamp);
+      }
+      return merged;
+    }
+
+    async function runBacktest() {
+      const btn = document.getElementById('backtestBtn');
+      const resultsDiv = document.getElementById('backtestResults');
+      btn.disabled = true;
+      btn.textContent = '⏳ Running backtest... (30-60 sec)';
+      resultsDiv.style.display = 'none';
+
+      const testPairs = ['EUR/USD', 'GBP/USD', 'XAU/USD'];
+      let allTrades = [];
+      let equity = 1000;
+      let maxEquity = 1000;
+      let maxDrawdown = 0;
+
+      for (const pair of testPairs) {
+        const hist1h = await fetchHistoricalCandles(pair, '1h', 90);
+        const hist4h = await fetchHistoricalCandles(pair, '4h', 90);
+        if (!hist1h.close.length || !hist4h.close.length) continue;
+
+        // Build 4H index map for faster lookup
+        const time4h = hist4h.timestamp;
+        for (let i = 50; i < hist1h.close.length - 50; i++) {
+          const time1h = hist1h.timestamp[i];
+          let j = 0;
+          while (j < time4h.length - 1 && time4h[j] <= time1h) j++;
+          j = Math.min(j, hist4h.close.length - 1);
+
+          // Slice data up to current point
+          const c1 = hist1h.close.slice(0, i+1);
+          const h1 = hist1h.high.slice(0, i+1);
+          const l1 = hist1h.low.slice(0, i+1);
+          const c4 = hist4h.close.slice(0, j+1);
+          const h4 = hist4h.high.slice(0, j+1);
+          const l4 = hist4h.low.slice(0, j+1);
+
+          const trade = analyzeHistoricalPoint(pair, c1, h1, l1, c4, h4, l4);
+          if (trade) {
+            // Simulate outcome over next 48 hours (48 candles)
+            const futureHigh = hist1h.high.slice(i+1, i+49);
+            const futureLow = hist1h.low.slice(i+1, i+49);
+            let outcome = null;
+            let exitPrice = null;
+
+            if (trade.direction === 'buy') {
+              if (futureLow.some(low => low <= trade.sl)) {
+                outcome = 'loss';
+                exitPrice = trade.sl;
+              } else if (futureHigh.some(high => high >= trade.tp)) {
+                outcome = 'win';
+                exitPrice = trade.tp;
+              }
+            } else {
+              if (futureHigh.some(high => high >= trade.sl)) {
+                outcome = 'loss';
+                exitPrice = trade.sl;
+              } else if (futureLow.some(low => low <= trade.tp)) {
+                outcome = 'win';
+                exitPrice = trade.tp;
+              }
+            }
+
+            if (outcome) {
+              const pipSize = getPipSize(pair);
+              const pips = trade.direction === 'buy' 
+                ? (exitPrice - trade.entry) / pipSize 
+                : (trade.entry - exitPrice) / pipSize;
+              const riskAmount = 10; // 1% of 1000
+              const pnl = (riskAmount / trade.slPips) * pips;
+
+              allTrades.push({ ...trade, outcome, pips, pnl, date: time1h });
+
+              equity += pnl;
+              maxEquity = Math.max(maxEquity, equity);
+              const dd = (maxEquity - equity) / maxEquity;
+              maxDrawdown = Math.max(maxDrawdown, dd);
+            }
+          }
+        }
+      }
+
+      // Stats
+      const wins = allTrades.filter(t => t.outcome === 'win').length;
+      const winRate = allTrades.length ? (wins / allTrades.length
