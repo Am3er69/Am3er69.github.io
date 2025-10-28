@@ -39,24 +39,24 @@
       padding: 10px;
       border-radius: 6px;
     }
-    .best-trade {
-      border-left-color: #8e44ad;
-      background: #f5eefc;
-    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>🔥 Daily Trading Weapon (R1000 Optimized)</h2>
+    <h2>🔥 Daily Trading Signals (R1000 Optimized)</h2>
     <p class="loading" id="status">📡 Fetching real 1H & 4H market data...</p>
     <div id="tradesContainer"></div>
   </div>
 
   <script>
     const API_KEY = 'ec47de8969cb431b8ea24453c5c989f1';
-    const PAIRS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF'];
-    const ACCOUNT_BALANCE = 1000; // R1000
-    const RISK_PERCENT = 1; // 1% risk per trade
+    const PAIRS = [
+      'EUR/USD', 'GBP/USD', 'USD/JPY',
+      'AUD/USD', 'USD/CAD', 'USD/CHF',
+      'XAU/USD' // Gold
+    ];
+    const ACCOUNT_BALANCE = 1000;
+    const RISK_PERCENT = 1;
 
     // === TRADING SESSION ===
     function getCurrentSession() {
@@ -67,8 +67,8 @@
     }
 
     function isPairActiveInSession(pair, session) {
-      if (session === 'London') return pair.includes('EUR') || pair.includes('GBP') || pair.includes('CHF');
-      if (session === 'New York') return pair.includes('USD') || pair.includes('CAD');
+      if (session === 'London') return pair.includes('EUR') || pair.includes('GBP') || pair.includes('CHF') || pair.includes('XAU');
+      if (session === 'New York') return pair.includes('USD') || pair.includes('CAD') || pair.includes('XAU');
       if (session === 'Asian') return pair.includes('JPY') || pair.includes('AUD') || pair.includes('NZD');
       return true;
     }
@@ -106,7 +106,7 @@
       return sma(tr, p);
     };
 
-    // === FETCH CANDLES (ANY TIMEFRAME) ===
+    // === FETCH CANDLES ===
     async function fetchCandles(pair, interval) {
       const symbol = pair.replace('/', '');
       const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=200&apikey=${API_KEY}`;
@@ -126,7 +126,7 @@
       return null;
     }
 
-    // === NEWS FILTER (SIMULATED HIGH-IMPACT) ===
+    // === NEWS FILTER ===
     function isHighImpactNewsWindow(pair) {
       const now = new Date();
       const day = now.getDate();
@@ -135,34 +135,52 @@
       const minute = now.getUTCMinutes();
       const timeInMinutes = hour * 60 + minute;
 
-      // NFP: First Friday, ~12:30 UTC
-      if (dayOfWeek === 5 && day <= 7 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) {
-        return pair.includes('USD');
-      }
-      // CPI: ~12:30 UTC between 10th–15th
-      if (day >= 10 && day <= 15 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) {
-        return pair.includes('USD');
-      }
+      if (dayOfWeek === 5 && day <= 7 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) return pair.includes('USD');
+      if (day >= 10 && day <= 15 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) return pair.includes('USD');
       return false;
     }
 
-    // === MAIN ANALYSIS ===
-    async function analyzePair(pair) {
+    // === PIP SIZE HELPER ===
+    function getPipSize(pair) {
+      if (pair.includes('JPY')) return 0.01;
+      if (pair.includes('XAU')) return 0.1; // Gold quoted to 2 decimals (e.g., 2345.60)
+      return 0.0001;
+    }
+
+    // === BUILD TRADE OBJECT ===
+    function buildTrade(pair, direction, entry, sl, tp, slPips, tpPips, rr, scoreBonus = 0) {
+      const riskAmount = (ACCOUNT_BALANCE * RISK_PERCENT) / 100;
+      const pipSize = getPipSize(pair);
+      const microLots = riskAmount / (slPips * 0.10);
+      let score = 0;
+      score += 25; // trend
+      score += 20; // higher TF
+      score += 15; // RSI
+      score += Math.min(20, (rr - 1.0) * 12); // R:R bonus
+      score += scoreBonus; // e.g., +10 for candle pattern
+      const winProb = Math.min(95, score);
+      let confidence = "Low";
+      if (winProb >= 70) confidence = "High";
+      else if (winProb >= 55) confidence = "Medium";
+      return { pair, direction, entry, sl, tp, slPips, tpPips, rr, winProb, confidence, microLots };
+    }
+
+    // === STRICT ANALYSIS (Primary) ===
+    async function analyzePairStrict(pair) {
       const session = getCurrentSession();
       if (!isPairActiveInSession(pair, session)) return [];
-
       if (isHighImpactNewsWindow(pair)) return [];
 
       const candles1h = await fetchCandles(pair, '1h');
       const candles4h = await fetchCandles(pair, '4h');
       if (!candles1h || !candles4h) return [];
 
-      // 4H Trend Filter
+      // 4H Trend
       const ema50_4h = ema(candles4h.close, 50);
       const ema200_4h = ema(candles4h.close, 200);
       const higherTrend = ema50_4h.at(-1) > ema200_4h.at(-1) ? 'up' : 'down';
 
-      // 1H Indicators
+      // 1H
       const c = candles1h.close;
       const h = candles1h.high;
       const l = candles1h.low;
@@ -178,10 +196,8 @@
       const latestAtr = atrs.at(-1);
       const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
 
-      // Volatility Zone Filter
-      if (latestAtr > atrAvg * 1.8 || latestAtr < atrAvg * 0.5) return [];
+      if (latestAtr > atrAvg * 2 || latestAtr < atrAvg * 0.4) return [];
 
-      // Candle Pattern
       const prevHigh = h.at(-2);
       const prevLow = l.at(-2);
       const bullishCandle = latestClose > prevHigh;
@@ -189,94 +205,167 @@
 
       const isUptrend = latestEma50 > latestEma200;
       const isDowntrend = latestEma50 < latestEma200;
-
+      const pipSize = getPipSize(pair);
       const trades = [];
-      const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
 
-      // BUY
-      if (isUptrend && higherTrend === 'up' && bullishCandle && latestRsi > 55) {
+      // 🔹 Primary: Pullback + Breakout
+      if (isUptrend && higherTrend === 'up' && bullishCandle && latestRsi > 50) {
         const sl = latestClose - latestAtr;
         const tp = latestClose + latestAtr * 2;
         const slPips = Math.abs(latestClose - sl) / pipSize;
         const tpPips = Math.abs(tp - latestClose) / pipSize;
         const rr = tpPips / slPips;
-        if (rr >= 1.5) {
-          let score = 0;
-          score += 25; // trend
-          score += 20; // higher TF
-          score += 25; // candle
-          score += 15; // RSI
-          score += Math.min(15, (rr - 1.5) * 10); // R:R bonus
-          const winProb = Math.min(95, score);
-
-          const riskAmount = (ACCOUNT_BALANCE * RISK_PERCENT) / 100;
-          const microLots = riskAmount / (slPips * 0.10);
-
-          trades.push({ pair, direction: 'buy', entry: latestClose, sl, tp, slPips, tpPips, rr, winProb, microLots });
-        }
+        if (rr >= 1.2) trades.push(buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 10));
       }
 
-      // SELL
-      if (isDowntrend && higherTrend === 'down' && bearishCandle && latestRsi < 45) {
+      if (isDowntrend && higherTrend === 'down' && bearishCandle && latestRsi < 50) {
         const sl = latestClose + latestAtr;
         const tp = latestClose - latestAtr * 2;
         const slPips = Math.abs(sl - latestClose) / pipSize;
         const tpPips = Math.abs(latestClose - tp) / pipSize;
         const rr = tpPips / slPips;
-        if (rr >= 1.5) {
-          let score = 0;
-          score += 25; // trend
-          score += 20; // higher TF
-          score += 25; // candle
-          score += 15; // RSI
-          score += Math.min(15, (rr - 1.5) * 10);
-          const winProb = Math.min(95, score);
+        if (rr >= 1.2) trades.push(buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 10));
+      }
 
-          const riskAmount = (ACCOUNT_BALANCE * RISK_PERCENT) / 100;
-          const microLots = riskAmount / (slPips * 0.10);
+      // 🔹 Secondary: Trend Continuation (no candle pattern needed)
+      if (isUptrend && higherTrend === 'up' && latestRsi > 55 && latestRsi < 70) {
+        const sl = latestEma50;
+        const tp = latestClose + latestAtr * 1.8;
+        const slPips = Math.abs(latestClose - sl) / pipSize;
+        const tpPips = Math.abs(tp - latestClose) / pipSize;
+        const rr = tpPips / slPips;
+        if (rr >= 1.2) trades.push(buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 0));
+      }
 
-          trades.push({ pair, direction: 'sell', entry: latestClose, sl, tp, slPips, tpPips, rr, winProb, microLots });
+      if (isDowntrend && higherTrend === 'down' && latestRsi < 45 && latestRsi > 30) {
+        const sl = latestEma50;
+        const tp = latestClose - latestAtr * 1.8;
+        const slPips = Math.abs(sl - latestClose) / pipSize;
+        const tpPips = Math.abs(latestClose - tp) / pipSize;
+        const rr = tpPips / slPips;
+        if (rr >= 1.2) trades.push(buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 0));
+      }
+
+      return trades;
+    }
+
+    // === RELAXED ANALYSIS (Fallback) ===
+    async function analyzePairRelaxed(pair) {
+      const session = getCurrentSession();
+      if (!isPairActiveInSession(pair, session)) return [];
+      // Skip news filter in relaxed mode (but keep ATR/trend)
+
+      const candles1h = await fetchCandles(pair, '1h');
+      const candles4h = await fetchCandles(pair, '4h');
+      if (!candles1h || !candles4h) return [];
+
+      const ema50_4h = ema(candles4h.close, 50);
+      const ema200_4h = ema(candles4h.close, 200);
+      const higherTrend = ema50_4h.at(-1) > ema200_4h.at(-1) ? 'up' : 'down';
+
+      const c = candles1h.close;
+      const h = candles1h.high;
+      const l = candles1h.low;
+      const ema50 = ema(c, 50);
+      const ema200 = ema(c, 200);
+      const rsis = rsi(c, 14);
+      const atrs = atr(h, l, c, 14);
+
+      const latestClose = c.at(-1);
+      const latestEma50 = ema50.at(-1);
+      const latestEma200 = ema200.at(-1);
+      const latestRsi = rsis.at(-1);
+      const latestAtr = atrs.at(-1);
+      const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
+
+      if (latestAtr > atrAvg * 2.2 || latestAtr < atrAvg * 0.3) return [];
+
+      const isUptrend = latestEma50 > latestEma200;
+      const isDowntrend = latestEma50 < latestEma200;
+      const pipSize = getPipSize(pair);
+      const trades = [];
+
+      // Relaxed: weaker RSI, no candle pattern
+      if (isUptrend && higherTrend === 'up' && latestRsi > 48) {
+        const sl = latestClose - latestAtr * 1.1;
+        const tp = latestClose + latestAtr * 1.6;
+        const slPips = Math.abs(latestClose - sl) / pipSize;
+        const tpPips = Math.abs(tp - latestClose) / pipSize;
+        const rr = tpPips / slPips;
+        if (rr >= 1.15) {
+          const trade = buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 0);
+          if (trade.winProb > 60) trades.push({ ...trade, relaxed: true });
+        }
+      }
+
+      if (isDowntrend && higherTrend === 'down' && latestRsi < 52) {
+        const sl = latestClose + latestAtr * 1.1;
+        const tp = latestClose - latestAtr * 1.6;
+        const slPips = Math.abs(sl - latestClose) / pipSize;
+        const tpPips = Math.abs(latestClose - tp) / pipSize;
+        const rr = tpPips / slPips;
+        if (rr >= 1.15) {
+          const trade = buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 0);
+          if (trade.winProb > 60) trades.push({ ...trade, relaxed: true });
         }
       }
 
       return trades;
     }
 
-    // === RUN ANALYSIS ===
+    // === MAIN SIGNAL GENERATOR ===
     async function generateDailySignals() {
-      document.getElementById('status').textContent = `🔍 Analyzing 6 pairs (1H + 4H) • Session: ${getCurrentSession()}`;
+      document.getElementById('status').textContent = `🔍 Analyzing ${PAIRS.length} pairs (1H + 4H) • Session: ${getCurrentSession()}`;
       let allTrades = [];
 
+      // Primary signals
       for (const pair of PAIRS) {
-        const trades = await analyzePair(pair);
+        const trades = await analyzePairStrict(pair);
         allTrades = allTrades.concat(trades);
-        await new Promise(r => setTimeout(r, 100)); // rate limit
+        await new Promise(r => setTimeout(r, 100));
       }
 
-      allTrades.sort((a, b) => b.winProb - a.winProb);
-      const top3 = allTrades.slice(0, 3);
-
-      const container = document.getElementById('tradesContainer');
-      if (top3.length === 0) {
-        container.innerHTML = '<div class="error">🚫 No high-quality setups today. Market conditions not optimal.</div>';
-        document.getElementById('status').textContent = '✅ Daily analysis complete';
+      // Fallback: if no signals, use relaxed mode
+      if (allTrades.length === 0) {
+        for (const pair of PAIRS) {
+          const trades = await analyzePairRelaxed(pair);
+          allTrades = allTrades.concat(trades);
+          await new Promise(r => setTimeout(r, 100));
+        }
+        // Keep only top 2 relaxed trades
+        allTrades.sort((a, b) => b.winProb - a.winProb);
+        allTrades = allTrades.slice(0, 2);
       } else {
-        let html = `<p>🎯 <b>Top ${top3.length} Trades for Today</b> (R1000 • 1% Risk)</p>`;
-        top3.forEach((t, i) => {
-          const dir = t.direction === 'buy' ? '🟢 BUY' : '🔴 SELL';
-          const decimals = t.pair.includes('JPY') ? 3 : 5;
-          const isBest = i === 0;
-          html += `
-            <div class="trade-card ${isBest ? 'best-trade' : ''}">
-              <b>#${i+1} • ${t.pair} • ${dir}</b> (${t.winProb}% confidence)
-              <div>Entry: ${t.entry.toFixed(decimals)} | SL: ${t.sl.toFixed(decimals)} (${t.slPips}p) | TP: ${t.tp.toFixed(decimals)} (${t.tpPips}p)</div>
-              <div>R:R = 1:${t.rr} | Position: ${t.microLots.toFixed(1)} micro lots (R${(ACCOUNT_BALANCE * RISK_PERCENT / 100).toFixed(0)} risk)</div>
-            </div>
-          `;
-        });
-        container.innerHTML = html;
-        document.getElementById('status').textContent = `✅ Ready: ${top3.length} high-conviction trades`;
+        allTrades.sort((a, b) => b.winProb - a.winProb);
       }
+
+      // Render
+      const container = document.getElementById('tradesContainer');
+      if (allTrades.length === 0) {
+        container.innerHTML = '<div class="error">🚫 No valid setups found. Market conditions extremely unfavorable.</div>';
+        document.getElementById('status').textContent = '✅ Analysis complete';
+        return;
+      }
+
+      let html = `<p>🎯 <b>${allTrades.length} Trade Opportunities</b> (R1000 • 1% Risk)</p>`;
+      allTrades.forEach((t, i) => {
+        const dir = t.direction === 'buy' ? '🟢 BUY' : '🔴 SELL';
+        const decimals = t.pair.includes('JPY') ? 3 : t.pair.includes('XAU') ? 2 : 5;
+        const confColor = t.confidence === "High" ? "#27ae60" : t.confidence === "Medium" ? "#f1c40f" : "#e67e22";
+        html += `
+          <div class="trade-card" style="border-left-color:${confColor}">
+            <b>#${i+1} • ${t.pair} • ${dir}</b>
+            <span style="background:${confColor};color:white;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:6px;">
+              ${t.confidence} Confidence
+            </span>
+            ${t.relaxed ? '<span style="background:#9b59b6;color:white;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:6px;">Relaxed</span>' : ''}
+            <div>Entry: ${t.entry.toFixed(decimals)} | SL: ${t.sl.toFixed(decimals)} (${t.slPips.toFixed(1)}p) | TP: ${t.tp.toFixed(decimals)} (${t.tpPips.toFixed(1)}p)</div>
+            <div>R:R = 1:${t.rr.toFixed(2)} | Win Prob: ${t.winProb}% | Size: ${t.microLots.toFixed(1)} micro lots</div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+      document.getElementById('status').textContent = `✅ ${allTrades.length} opportunities ready`;
     }
 
     // === START ===
