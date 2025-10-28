@@ -32,82 +32,84 @@
       background: #f8f9fa;
       border-left: 4px solid #27ae60;
     }
-    .loading {
-      color: #3498db;
-    }
-    .error {
+    .loading { color: #3498db; }
+    .error { 
       color: #e74c3c;
       background: #fadbd8;
       padding: 10px;
       border-radius: 6px;
     }
+    .best-trade {
+      border-left-color: #8e44ad;
+      background: #f5eefc;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>📱 Forex Trader Pro (R1000 Account)</h2>
-    <p class="loading" id="status">📡 Fetching real market data...</p>
+    <h2>🔥 Daily Trading Weapon (R1000 Optimized)</h2>
+    <p class="loading" id="status">📡 Fetching real 1H & 4H market data...</p>
     <div id="tradesContainer"></div>
   </div>
 
   <script>
-    // 🔑 YOUR TWELVE DATA API KEY (already inserted)
     const API_KEY = 'ec47de8969cb431b8ea24453c5c989f1';
-
     const PAIRS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF'];
-    const TIMEFRAME = '1h';
+    const ACCOUNT_BALANCE = 1000; // R1000
+    const RISK_PERCENT = 1; // 1% risk per trade
+
+    // === TRADING SESSION ===
+    function getCurrentSession() {
+      const hour = new Date().getUTCHours();
+      if (hour >= 7 && hour < 15) return 'London';
+      if (hour >= 12 && hour < 21) return 'New York';
+      return 'Asian';
+    }
+
+    function isPairActiveInSession(pair, session) {
+      if (session === 'London') return pair.includes('EUR') || pair.includes('GBP') || pair.includes('CHF');
+      if (session === 'New York') return pair.includes('USD') || pair.includes('CAD');
+      if (session === 'Asian') return pair.includes('JPY') || pair.includes('AUD') || pair.includes('NZD');
+      return true;
+    }
 
     // === MATH HELPERS ===
-    function sma(data, period) {
+    const sma = (data, p) => {
       const avg = [];
-      for (let i = period - 1; i < data.length; i++) {
-        const slice = data.slice(i - period + 1, i + 1);
-        avg.push(slice.reduce((a, b) => a + b, 0) / period);
+      for (let i = p - 1; i < data.length; i++) {
+        avg.push(data.slice(i - p + 1, i + 1).reduce((a, b) => a + b, 0) / p);
       }
       return avg;
-    }
+    };
 
-    function ema(data, period) {
-      const k = 2 / (period + 1);
-      const ema = [data[0]];
-      for (let i = 1; i < data.length; i++) {
-        ema.push((data[i] * k) + (ema[i - 1] * (1 - k)));
-      }
-      return ema;
-    }
+    const ema = (data, p) => {
+      const k = 2 / (p + 1);
+      const e = [data[0]];
+      for (let i = 1; i < data.length; i++) e.push(data[i] * k + e[i - 1] * (1 - k));
+      return e;
+    };
 
-    function rsi(prices, period = 14) {
-      const deltas = prices.slice(1).map((p, i) => p - prices[i]);
+    const rsi = (prices, p = 14) => {
+      const deltas = prices.slice(1).map((v, i) => v - prices[i]);
       const gains = deltas.map(d => d > 0 ? d : 0);
       const losses = deltas.map(d => d < 0 ? -d : 0);
-      const avgGain = sma(gains, period);
-      const avgLoss = sma(losses, period);
-      return avgGain.map((g, i) => {
-        const rs = g / (avgLoss[i] || 1);
-        return 100 - (100 / (1 + rs));
-      });
-    }
+      const avgGain = sma(gains, p);
+      const avgLoss = sma(losses, p);
+      return avgGain.map((g, i) => 100 - (100 / (1 + (g / (avgLoss[i] || 1)))));
+    };
 
-    function atr(high, low, close, period = 14) {
-      const tr = [];
-      for (let i = 0; i < high.length; i++) {
-        if (i === 0) {
-          tr.push(high[i] - low[i]);
-        } else {
-          const hl = high[i] - low[i];
-          const hc = Math.abs(high[i] - close[i - 1]);
-          const lc = Math.abs(low[i] - close[i - 1]);
-          tr.push(Math.max(hl, hc, lc));
-        }
+    const atr = (high, low, close, p = 14) => {
+      const tr = [high[0] - low[0]];
+      for (let i = 1; i < high.length; i++) {
+        tr.push(Math.max(high[i] - low[i], Math.abs(high[i] - close[i - 1]), Math.abs(low[i] - close[i - 1])));
       }
-      return sma(tr, period);
-    }
+      return sma(tr, p);
+    };
 
-    // === FETCH REAL CANDLE DATA ===
-    async function fetchCandles(pair) {
+    // === FETCH CANDLES (ANY TIMEFRAME) ===
+    async function fetchCandles(pair, interval) {
       const symbol = pair.replace('/', '');
-      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${TIMEFRAME}&outputsize=200&apikey=${API_KEY}`;
-      
+      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=200&apikey=${API_KEY}`;
       try {
         const res = await fetch(url);
         const data = await res.json();
@@ -115,129 +117,170 @@
           return {
             close: data.values.map(v => parseFloat(v.close)).reverse(),
             high: data.values.map(v => parseFloat(v.high)).reverse(),
-            low: data.values.map(v => parseFloat(v.low)).reverse(),
-            open: data.values.map(v => parseFloat(v.open)).reverse()
+            low: data.values.map(v => parseFloat(v.low)).reverse()
           };
         }
       } catch (e) {
-        console.error(`Failed to fetch ${pair}:`, e);
+        console.error(`Failed ${pair} ${interval}:`, e);
       }
       return null;
     }
 
-    // === GENERATE CONFIRMED TRADE ===
-    function analyzePair(pair, candles) {
-      const closes = candles.close;
-      const highs = candles.high;
-      const lows = candles.low;
+    // === NEWS FILTER (SIMULATED HIGH-IMPACT) ===
+    function isHighImpactNewsWindow(pair) {
+      const now = new Date();
+      const day = now.getDate();
+      const dayOfWeek = now.getDay();
+      const hour = now.getUTCHours();
+      const minute = now.getUTCMinutes();
+      const timeInMinutes = hour * 60 + minute;
 
-      const ema50 = ema(closes, 50);
-      const ema200 = ema(closes, 200);
-      const rsis = rsi(closes, 14);
-      const atrs = atr(highs, lows, closes, 14);
+      // NFP: First Friday, ~12:30 UTC
+      if (dayOfWeek === 5 && day <= 7 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) {
+        return pair.includes('USD');
+      }
+      // CPI: ~12:30 UTC between 10th–15th
+      if (day >= 10 && day <= 15 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) {
+        return pair.includes('USD');
+      }
+      return false;
+    }
 
-      const latestClose = closes[closes.length - 1];
-      const latestEma50 = ema50[ema50.length - 1];
-      const latestEma200 = ema200[ema200.length - 1];
-      const latestRsi = rsis[rsis.length - 1];
-      const latestAtr = atrs[atrs.length - 1];
+    // === MAIN ANALYSIS ===
+    async function analyzePair(pair) {
+      const session = getCurrentSession();
+      if (!isPairActiveInSession(pair, session)) return [];
+
+      if (isHighImpactNewsWindow(pair)) return [];
+
+      const candles1h = await fetchCandles(pair, '1h');
+      const candles4h = await fetchCandles(pair, '4h');
+      if (!candles1h || !candles4h) return [];
+
+      // 4H Trend Filter
+      const ema50_4h = ema(candles4h.close, 50);
+      const ema200_4h = ema(candles4h.close, 200);
+      const higherTrend = ema50_4h.at(-1) > ema200_4h.at(-1) ? 'up' : 'down';
+
+      // 1H Indicators
+      const c = candles1h.close;
+      const h = candles1h.high;
+      const l = candles1h.low;
+      const ema50 = ema(c, 50);
+      const ema200 = ema(c, 200);
+      const rsis = rsi(c, 14);
+      const atrs = atr(h, l, c, 14);
+
+      const latestClose = c.at(-1);
+      const latestEma50 = ema50.at(-1);
+      const latestEma200 = ema200.at(-1);
+      const latestRsi = rsis.at(-1);
+      const latestAtr = atrs.at(-1);
+      const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
+
+      // Volatility Zone Filter
+      if (latestAtr > atrAvg * 1.8 || latestAtr < atrAvg * 0.5) return [];
+
+      // Candle Pattern
+      const prevHigh = h.at(-2);
+      const prevLow = l.at(-2);
+      const bullishCandle = latestClose > prevHigh;
+      const bearishCandle = latestClose < prevLow;
 
       const isUptrend = latestEma50 > latestEma200;
       const isDowntrend = latestEma50 < latestEma200;
 
       const trades = [];
+      const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
 
-      // BUY setup
-      if (isUptrend && latestRsi > 55 && latestAtr > (pair.includes('JPY') ? 0.5 : 0.0005)) {
-        const sl = latestClose - (latestAtr * 1.0);
-        const tp = latestClose + (latestAtr * 2.0);
-        const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
+      // BUY
+      if (isUptrend && higherTrend === 'up' && bullishCandle && latestRsi > 55) {
+        const sl = latestClose - latestAtr;
+        const tp = latestClose + latestAtr * 2;
         const slPips = Math.abs(latestClose - sl) / pipSize;
         const tpPips = Math.abs(tp - latestClose) / pipSize;
         const rr = tpPips / slPips;
         if (rr >= 1.5) {
-          trades.push({
-            pair,
-            direction: 'buy',
-            entry: latestClose,
-            sl,
-            tp,
-            slPips: slPips.toFixed(1),
-            tpPips: tpPips.toFixed(1),
-            rr: rr.toFixed(2),
-            winProb: 70,
-            reason: "EMA50>200, RSI>55, ATR valid, R:R≥1.5"
-          });
+          let score = 0;
+          score += 25; // trend
+          score += 20; // higher TF
+          score += 25; // candle
+          score += 15; // RSI
+          score += Math.min(15, (rr - 1.5) * 10); // R:R bonus
+          const winProb = Math.min(95, score);
+
+          const riskAmount = (ACCOUNT_BALANCE * RISK_PERCENT) / 100;
+          const microLots = riskAmount / (slPips * 0.10);
+
+          trades.push({ pair, direction: 'buy', entry: latestClose, sl, tp, slPips, tpPips, rr, winProb, microLots });
         }
       }
 
-      // SELL setup
-      if (isDowntrend && latestRsi < 45 && latestAtr > (pair.includes('JPY') ? 0.5 : 0.0005)) {
-        const sl = latestClose + (latestAtr * 1.0);
-        const tp = latestClose - (latestAtr * 2.0);
-        const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
+      // SELL
+      if (isDowntrend && higherTrend === 'down' && bearishCandle && latestRsi < 45) {
+        const sl = latestClose + latestAtr;
+        const tp = latestClose - latestAtr * 2;
         const slPips = Math.abs(sl - latestClose) / pipSize;
         const tpPips = Math.abs(latestClose - tp) / pipSize;
         const rr = tpPips / slPips;
         if (rr >= 1.5) {
-          trades.push({
-            pair,
-            direction: 'sell',
-            entry: latestClose,
-            sl,
-            tp,
-            slPips: slPips.toFixed(1),
-            tpPips: tpPips.toFixed(1),
-            rr: rr.toFixed(2),
-            winProb: 68,
-            reason: "EMA50<200, RSI<45, ATR valid, R:R≥1.5"
-          });
+          let score = 0;
+          score += 25; // trend
+          score += 20; // higher TF
+          score += 25; // candle
+          score += 15; // RSI
+          score += Math.min(15, (rr - 1.5) * 10);
+          const winProb = Math.min(95, score);
+
+          const riskAmount = (ACCOUNT_BALANCE * RISK_PERCENT) / 100;
+          const microLots = riskAmount / (slPips * 0.10);
+
+          trades.push({ pair, direction: 'sell', entry: latestClose, sl, tp, slPips, tpPips, rr, winProb, microLots });
         }
       }
 
       return trades;
     }
 
-    // === MAIN ANALYSIS LOOP ===
-    async function generateSignals() {
-      document.getElementById('status').textContent = '🔍 Analyzing 6 major pairs...';
+    // === RUN ANALYSIS ===
+    async function generateDailySignals() {
+      document.getElementById('status').textContent = `🔍 Analyzing 6 pairs (1H + 4H) • Session: ${getCurrentSession()}`;
       let allTrades = [];
 
       for (const pair of PAIRS) {
-        const candles = await fetchCandles(pair);
-        if (candles) {
-          const trades = analyzePair(pair, candles);
-          allTrades = allTrades.concat(trades);
-        }
-        await new Promise(r => setTimeout(r, 100));
+        const trades = await analyzePair(pair);
+        allTrades = allTrades.concat(trades);
+        await new Promise(r => setTimeout(r, 100)); // rate limit
       }
 
       allTrades.sort((a, b) => b.winProb - a.winProb);
-      const container = document.getElementById('tradesContainer');
+      const top3 = allTrades.slice(0, 3);
 
-      if (allTrades.length === 0) {
-        container.innerHTML = '<div class="error">🚫 No high-quality setups found. Market may be ranging or low-volatility.</div>';
-        document.getElementById('status').textContent = '✅ Analysis complete';
+      const container = document.getElementById('tradesContainer');
+      if (top3.length === 0) {
+        container.innerHTML = '<div class="error">🚫 No high-quality setups today. Market conditions not optimal.</div>';
+        document.getElementById('status').textContent = '✅ Daily analysis complete';
       } else {
-        let html = `<p>✅ Found ${allTrades.length} confirmed signals (real OHLC data)</p>`;
-        allTrades.forEach((t, i) => {
+        let html = `<p>🎯 <b>Top ${top3.length} Trades for Today</b> (R1000 • 1% Risk)</p>`;
+        top3.forEach((t, i) => {
           const dir = t.direction === 'buy' ? '🟢 BUY' : '🔴 SELL';
           const decimals = t.pair.includes('JPY') ? 3 : 5;
+          const isBest = i === 0;
           html += `
-            <div class="trade-card">
-              <b>#${i+1} • ${t.pair} • ${dir}</b> (${t.winProb}%)
+            <div class="trade-card ${isBest ? 'best-trade' : ''}">
+              <b>#${i+1} • ${t.pair} • ${dir}</b> (${t.winProb}% confidence)
               <div>Entry: ${t.entry.toFixed(decimals)} | SL: ${t.sl.toFixed(decimals)} (${t.slPips}p) | TP: ${t.tp.toFixed(decimals)} (${t.tpPips}p)</div>
-              <div><small>R:R = 1:${t.rr} | ${t.reason}</small></div>
+              <div>R:R = 1:${t.rr} | Position: ${t.microLots.toFixed(1)} micro lots (R${(ACCOUNT_BALANCE * RISK_PERCENT / 100).toFixed(0)} risk)</div>
             </div>
           `;
         });
         container.innerHTML = html;
-        document.getElementById('status').textContent = `✅ ${allTrades.length} high-confidence signals ready`;
+        document.getElementById('status').textContent = `✅ Ready: ${top3.length} high-conviction trades`;
       }
     }
 
     // === START ===
-    generateSignals();
+    generateDailySignals();
   </script>
 </body>
 </html>
