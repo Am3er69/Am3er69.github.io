@@ -39,32 +39,17 @@
       padding: 10px;
       border-radius: 6px;
     }
+    .api-error {
+      background: #fef6f6;
+      border: 1px solid #e74c3c;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 12px;
+    }
     .session-info {
       font-size: 0.9em;
       color: #7f8c8d;
       margin-bottom: 8px;
-    }
-    button {
-      margin: 16px auto;
-      display: block;
-      padding: 10px 20px;
-      background: #3498db;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    button:disabled {
-      background: #bdc3c7;
-      cursor: not-allowed;
-    }
-    #backtestResults {
-      margin-top: 20px;
-      padding: 16px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      display: none;
     }
   </style>
 </head>
@@ -76,22 +61,13 @@
     <div id="tradesContainer"></div>
   </div>
 
-  <button id="backtestBtn" onclick="runBacktest()">
-    📊 Run Backtest (Last 90 Days)
-  </button>
-  <div id="backtestResults"></div>
-
   <script>
     const API_KEY = 'ec47de8969cb431b8ea24453c5c989f1';
-    const PAIRS = [
-      'EUR/USD', 'GBP/USD', 'USD/JPY',
-      'AUD/USD', 'USD/CAD', 'USD/CHF',
-      'XAU/USD'
-    ];
+    // Only 4 high-impact pairs to stay under rate limits
+    const PAIRS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'XAU/USD'];
     const ACCOUNT_BALANCE = 1000;
     const RISK_PERCENT = 1;
 
-    // === TRADING SESSION ===
     function getCurrentSession() {
       const hour = new Date().getUTCHours();
       if (hour >= 7 && hour < 15) return 'London';
@@ -100,13 +76,12 @@
     }
 
     function isPairActiveInSession(pair, session) {
-      if (session === 'London') return pair.includes('EUR') || pair.includes('GBP') || pair.includes('CHF') || pair.includes('XAU');
-      if (session === 'New York') return pair.includes('USD') || pair.includes('CAD') || pair.includes('XAU');
-      if (session === 'Asian') return pair.includes('JPY') || pair.includes('AUD') || pair.includes('NZD');
+      if (session === 'London') return pair.includes('EUR') || pair.includes('GBP') || pair.includes('XAU');
+      if (session === 'New York') return pair.includes('USD') || pair.includes('XAU');
+      if (session === 'Asian') return pair.includes('JPY');
       return true;
     }
 
-    // === MATH HELPERS ===
     const sma = (data, p) => {
       const avg = [];
       for (let i = p - 1; i < data.length; i++) {
@@ -139,13 +114,15 @@
       return sma(tr, p);
     };
 
-    // === FETCH CANDLES (LIVE) ===
     async function fetchCandles(pair, interval) {
       const symbol = pair.replace('/', '');
       const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=200&apikey=${API_KEY}`;
       try {
         const res = await fetch(url);
         const data = await res.json();
+        if (data.code === 403 || data.message === "This API key is invalid.") {
+          throw new Error("INVALID_API_KEY");
+        }
         if (data.values) {
           return {
             close: data.values.map(v => parseFloat(v.close)).reverse(),
@@ -154,12 +131,12 @@
           };
         }
       } catch (e) {
+        if (e.message === "INVALID_API_KEY") throw e;
         console.error(`Failed ${pair} ${interval}:`, e);
       }
       return null;
     }
 
-    // === NEWS FILTER ===
     function isHighImpactNewsWindow(pair) {
       const now = new Date();
       const day = now.getDate();
@@ -167,28 +144,23 @@
       const hour = now.getUTCHours();
       const minute = now.getUTCMinutes();
       const timeInMinutes = hour * 60 + minute;
-
       if (dayOfWeek === 5 && day <= 7 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) return pair.includes('USD');
       if (day >= 10 && day <= 15 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) return pair.includes('USD');
       return false;
     }
 
-    // === PIP SIZE HELPER ===
     function getPipSize(pair) {
       if (pair.includes('JPY')) return 0.01;
       if (pair.includes('XAU')) return 0.1;
       return 0.0001;
     }
 
-    // === BUILD TRADE OBJECT ===
     function buildTrade(pair, direction, entry, sl, tp, slPips, tpPips, rr, scoreBonus = 0) {
       const riskAmount = (ACCOUNT_BALANCE * RISK_PERCENT) / 100;
       const pipSize = getPipSize(pair);
       const microLots = riskAmount / (slPips * 0.10);
       let score = 0;
-      score += 25;
-      score += 20;
-      score += 15;
+      score += 25; score += 20; score += 15;
       score += Math.min(20, (rr - 1.0) * 12);
       score += scoreBonus;
       const winProb = Math.min(95, score);
@@ -198,7 +170,6 @@
       return { pair, direction, entry, sl, tp, slPips, tpPips, rr, winProb, confidence, microLots };
     }
 
-    // === STRICT ANALYSIS ===
     async function analyzePairStrict(pair) {
       const session = getCurrentSession();
       if (!isPairActiveInSession(pair, session)) return [];
@@ -278,7 +249,6 @@
       return trades;
     }
 
-    // === RELAXED ANALYSIS ===
     async function analyzePairRelaxed(pair) {
       const session = getCurrentSession();
       if (!isPairActiveInSession(pair, session)) return [];
@@ -340,7 +310,6 @@
       return trades;
     }
 
-    // === MAIN SIGNAL GENERATOR ===
     async function generateDailySignals() {
       const session = getCurrentSession();
       document.getElementById('sessionLabel').textContent = session;
@@ -348,17 +317,42 @@
 
       let strictTrades = [];
       let relaxedTrades = [];
+      let apiKeyValid = true;
 
       for (const pair of PAIRS) {
-        const trades = await analyzePairStrict(pair);
-        strictTrades = strictTrades.concat(trades);
-        await new Promise(r => setTimeout(r, 100));
+        try {
+          const trades = await analyzePairStrict(pair);
+          strictTrades = strictTrades.concat(trades);
+        } catch (e) {
+          if (e.message === "INVALID_API_KEY") {
+            apiKeyValid = false;
+            break;
+          }
+        }
+        await new Promise(r => setTimeout(r, 1000)); // 1-second delay
+      }
+
+      if (!apiKeyValid) {
+        document.getElementById('status').textContent = '❌ Invalid or Blocked API Key!';
+        document.getElementById('tradesContainer').innerHTML = `
+          <div class="api-error">
+            <b>API Key Issue</b><br>
+            Your key is invalid or temporarily blocked.<br>
+            🔹 Wait 5–10 minutes, then refresh.<br>
+            🔹 Or get a new free key at <a href="https://twelvedata.com/" target="_blank">twelvedata.com</a>
+          </div>
+        `;
+        return;
       }
 
       for (const pair of PAIRS) {
-        const trades = await analyzePairRelaxed(pair);
-        relaxedTrades = relaxedTrades.concat(trades);
-        await new Promise(r => setTimeout(r, 100));
+        try {
+          const trades = await analyzePairRelaxed(pair);
+          relaxedTrades = relaxedTrades.concat(trades);
+        } catch (e) {
+          // ignore
+        }
+        await new Promise(r => setTimeout(r, 1000));
       }
 
       let allTrades = [...strictTrades];
@@ -397,138 +391,9 @@
       });
       container.innerHTML = html;
       document.getElementById('status').textContent = `✅ ${allTrades.length} opportunity${allTrades.length !== 1 ? 's' : ''} ready`;
-
-      setTimeout(() => {
-        document.getElementById('status').textContent = '🔄 Auto-refreshing...';
-        generateDailySignals();
-      }, 30 * 60 * 1000);
     }
 
-    // ==============================
-    // === BACKTESTING SECTION ===
-    // ==============================
-
-    async function fetchHistoricalCandles(pair, interval, days = 90) {
-      const symbol = pair.replace('/', '');
-      const chunks = [];
-      let endDate = new Date();
-      const candlesPerChunk = 200;
-      const daysPerChunk = interval === '1h' ? 8 : 32;
-      const chunksNeeded = Math.ceil(days / daysPerChunk);
-
-      for (let i = 0; i < chunksNeeded; i++) {
-        const dateStr = endDate.toISOString().split('T')[0];
-        const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=${candlesPerChunk}&end_date=${dateStr}&apikey=${API_KEY}`;
-        try {
-          const res = await fetch(url);
-          const data = await res.json();
-          if (data.values && data.values.length > 0) {
-            const chunk = {
-              close: data.values.map(v => parseFloat(v.close)),
-              high: data.values.map(v => parseFloat(v.high)),
-              low: data.values.map(v => parseFloat(v.low)),
-              timestamp: data.values.map(v => new Date(v.datetime))
-            };
-            chunks.push(chunk);
-            const lastTime = new Date(data.values[data.values.length - 1].datetime);
-            endDate = new Date(lastTime.getTime() - 60000);
-          } else break;
-        } catch (e) {
-          console.error(`Backtest fetch error for ${pair} ${interval}:`, e);
-          break;
-        }
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      let merged = { close: [], high: [], low: [], timestamp: [] };
-      for (let i = chunks.length - 1; i >= 0; i--) {
-        merged.close.push(...chunks[i].close);
-        merged.high.push(...chunks[i].high);
-        merged.low.push(...chunks[i].low);
-        merged.timestamp.push(...chunks[i].timestamp);
-      }
-      return merged;
-    }
-
-    async function runBacktest() {
-      const btn = document.getElementById('backtestBtn');
-      const resultsDiv = document.getElementById('backtestResults');
-      btn.disabled = true;
-      btn.textContent = '⏳ Running backtest... (30-60 sec)';
-      resultsDiv.style.display = 'none';
-
-      const testPairs = ['EUR/USD', 'GBP/USD', 'XAU/USD'];
-      let allTrades = [];
-      let equity = 1000;
-      let maxEquity = 1000;
-      let maxDrawdown = 0;
-
-      for (const pair of testPairs) {
-        const hist1h = await fetchHistoricalCandles(pair, '1h', 90);
-        const hist4h = await fetchHistoricalCandles(pair, '4h', 90);
-        if (!hist1h.close.length || !hist4h.close.length) continue;
-
-        // Build 4H index map for faster lookup
-        const time4h = hist4h.timestamp;
-        for (let i = 50; i < hist1h.close.length - 50; i++) {
-          const time1h = hist1h.timestamp[i];
-          let j = 0;
-          while (j < time4h.length - 1 && time4h[j] <= time1h) j++;
-          j = Math.min(j, hist4h.close.length - 1);
-
-          // Slice data up to current point
-          const c1 = hist1h.close.slice(0, i+1);
-          const h1 = hist1h.high.slice(0, i+1);
-          const l1 = hist1h.low.slice(0, i+1);
-          const c4 = hist4h.close.slice(0, j+1);
-          const h4 = hist4h.high.slice(0, j+1);
-          const l4 = hist4h.low.slice(0, j+1);
-
-          const trade = analyzeHistoricalPoint(pair, c1, h1, l1, c4, h4, l4);
-          if (trade) {
-            // Simulate outcome over next 48 hours (48 candles)
-            const futureHigh = hist1h.high.slice(i+1, i+49);
-            const futureLow = hist1h.low.slice(i+1, i+49);
-            let outcome = null;
-            let exitPrice = null;
-
-            if (trade.direction === 'buy') {
-              if (futureLow.some(low => low <= trade.sl)) {
-                outcome = 'loss';
-                exitPrice = trade.sl;
-              } else if (futureHigh.some(high => high >= trade.tp)) {
-                outcome = 'win';
-                exitPrice = trade.tp;
-              }
-            } else {
-              if (futureHigh.some(high => high >= trade.sl)) {
-                outcome = 'loss';
-                exitPrice = trade.sl;
-              } else if (futureLow.some(low => low <= trade.tp)) {
-                outcome = 'win';
-                exitPrice = trade.tp;
-              }
-            }
-
-            if (outcome) {
-              const pipSize = getPipSize(pair);
-              const pips = trade.direction === 'buy' 
-                ? (exitPrice - trade.entry) / pipSize 
-                : (trade.entry - exitPrice) / pipSize;
-              const riskAmount = 10; // 1% of 1000
-              const pnl = (riskAmount / trade.slPips) * pips;
-
-              allTrades.push({ ...trade, outcome, pips, pnl, date: time1h });
-
-              equity += pnl;
-              maxEquity = Math.max(maxEquity, equity);
-              const dd = (maxEquity - equity) / maxEquity;
-              maxDrawdown = Math.max(maxDrawdown, dd);
-            }
-          }
-        }
-      }
-
-      // Stats
-      const wins = allTrades.filter(t => t.outcome === 'win').length;
-      const winRate = allTrades.length ? (wins / allTrades.length
+    generateDailySignals();
+  </script>
+</body>
+</html>
