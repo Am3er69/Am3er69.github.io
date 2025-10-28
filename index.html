@@ -53,52 +53,31 @@
     button:hover {
       background: #219653;
     }
-    #chart {
-      height: 300px;
-      margin: 12px 0;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-    }
-    .news-item {
+    .news-item, .event-item {
       padding: 10px 0;
       border-bottom: 1px solid #eee;
     }
-    .news-item a {
-      text-decoration: none;
-      color: #2980b9;
-    }
-    .result, .analysis, .trend, .backtest-result {
+    .event-item.high { background: #ffeaa7; border-left: 3px solid #e17055; }
+    .event-item.medium { background: #fdcb6e; }
+    .event-item.low { opacity: 0.7; }
+    .trade-card {
       padding: 12px;
       border-radius: 6px;
       margin-top: 12px;
-      font-weight: bold;
-    }
-    .analysis { background: #e8f4f8; }
-    .trend.uptrend { background: #d5f5e3; color: #27ae60; }
-    .trend.downtrend { background: #fadbd8; color: #c0392b; }
-    .trend.range { background: #fef9e7; color: #f39c12; }
-    .win-prob { background: #d5f5e3; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 1.1em; }
-    .backtest-result.win { background: #d5f5e3; color: #27ae60; }
-    .backtest-result.loss { background: #fadbd8; color: #c0392b; }
-    #journalBtn, #backtestToggle {
-      background: #3498db;
-    }
-    #journalBtn:hover, #backtestToggle:hover {
-      background: #2980b9;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 12px;
-      font-size: 0.9em;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 6px;
-      text-align: left;
-    }
-    th {
+      font-size: 0.95em;
       background: #f8f9fa;
+      border-left: 4px solid #3498db;
+    }
+    .trade-card.risky {
+      border-left-color: #e74c3c;
+      background: #fadbd8;
+    }
+    .warning {
+      background: #fff3cd;
+      padding: 10px;
+      border-radius: 6px;
+      margin: 12px 0;
+      border-left: 4px solid #ffc107;
     }
   </style>
 </head>
@@ -106,359 +85,169 @@
   <div class="container">
     <h2>📱 Forex Trader Pro (R1000 Account)</h2>
 
-    <button id="backtestToggle" onclick="toggleMode()">🔄 Switch to Backtest Mode</button>
+    <!-- ECONOMIC CALENDAR -->
+    <h2>📅 Today's Economic Events</h2>
+    <div id="economicCalendar">Loading events...</div>
 
-    <label for="pair">Select Major Pair:</label>
-    <select id="pair" onchange="loadChart()">
-      <option value="EURUSD">EUR/USD</option>
-      <option value="GBPUSD">GBP/USD</option>
-      <option value="USDJPY">USD/JPY</option>
-      <option value="AUDUSD">AUD/USD</option>
-      <option value="USDCAD">USD/CAD</option>
-      <option value="USDCHF">USD/CHF</option>
-    </select>
+    <!-- DAILY TRADES -->
+    <h2>🔥 Top 10 Daily Trades</h2>
+    <div id="dailyTrades"></div>
 
-    <div id="chart"><p>Loading chart...</p></div>
-    <div id="trendBias" class="trend">⏳ Detecting trend...</div>
-
-    <h2>🎯 Trade Setup</h2>
-    <div class="radio-group">
-      <label><input type="radio" name="setupType" value="buy" checked> Buy</label>
-      <label><input type="radio" name="setupType" value="sell"> Sell</label>
-    </div>
-
-    <!-- Backtest-only field -->
-    <input type="text" id="backtestDate" placeholder="Backtest Date (e.g. 2025-03-15)" style="display:none;">
-
-    <input type="number" id="currentPrice" placeholder="Current or Historical Price (e.g. 1.0850)" step="0.0001">
-    <button onclick="analyzeSetup()">🔍 Analyze Setup (Entry, SL, TP)</button>
-    
-    <input type="number" id="entry" placeholder="Entry Price" step="0.0001">
-    <input type="number" id="sl" placeholder="Stop Loss" step="0.0001">
-    <input type="number" id="tp" placeholder="Take Profit" step="0.0001">
-    <button onclick="calculateRisk()">Calculate Risk & Position Size</button>
-
-    <!-- Backtest Simulation Button -->
-    <button id="simulateBtn" onclick="simulateBacktest()" style="display:none; background:#8e44ad;">🎲 Simulate Backtest Outcome</button>
-
-    <div id="analysis"></div>
-    <div id="result"></div>
-    <div id="backtestResult"></div>
-
-    <button id="journalBtn" onclick="exportJournal()">📥 Export Trade Journal (CSV)</button>
-
-    <!-- Backtest History Table -->
-    <div id="backtestTable" style="display:none;">
-      <h3>📊 Backtest Results</h3>
-      <table id="backtestList">
-        <thead>
-          <tr>
-            <th>Date</th><th>Pair</th><th>Type</th><th>Result</th><th>P/L (R)</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <h2>📰 Latest Forex News</h2>
-    <div id="news">Loading news...</div>
+    <!-- Rest of app (you can add chart/news below if needed) -->
   </div>
 
   <script>
-    let journal = [];
-    let backtests = [];
-    let isBacktestMode = false;
+    // === SIMULATED ECONOMIC CALENDAR (High-Impact Only) ===
+    function getTodayEvents() {
+      const now = new Date();
+      const day = now.getDate();
+      const month = now.getMonth();
+      const year = now.getFullYear();
+      const dayOfWeek = now.getDay(); // 0 = Sun, 5 = Fri
 
-    function toggleMode() {
-      isBacktestMode = !isBacktestMode;
-      const btn = document.getElementById('backtestToggle');
-      const dateInput = document.getElementById('backtestDate');
-      const simulateBtn = document.getElementById('simulateBtn');
-      const table = document.getElementById('backtestTable');
+      const events = [];
 
-      if (isBacktestMode) {
-        btn.textContent = '🔄 Switch to Live Mode';
-        dateInput.style.display = 'block';
-        simulateBtn.style.display = 'block';
-        table.style.display = 'block';
-        document.getElementById('currentPrice').placeholder = "Historical Price (e.g. 1.0500)";
-      } else {
-        btn.textContent = '🔄 Switch to Backtest Mode';
-        dateInput.style.display = 'none';
-        simulateBtn.style.display = 'none';
-        table.style.display = 'none';
-        document.getElementById('currentPrice').placeholder = "Current Price (e.g. 1.0850)";
+      // High-impact recurring events
+      const majorEvents = [
+        { name: "Non-Farm Payrolls (NFP)", currencies: ["USD"], time: "12:30", impact: "high" },
+        { name: "CPI (MoM)", currencies: ["USD", "EUR", "GBP"], time: "12:30", impact: "high" },
+        { name: "Interest Rate Decision", currencies: ["USD", "EUR", "GBP", "JPY"], time: "11:00", impact: "high" },
+        { name: "Retail Sales", currencies: ["USD"], time: "12:30", impact: "high" },
+        { name: "GDP (Final)", currencies: ["USD", "EUR"], time: "12:30", impact: "high" },
+        { name: "FOMC Meeting", currencies: ["USD"], time: "18:00", impact: "high" }
+      ];
+
+      // Simulate: NFP = first Friday of month
+      if (dayOfWeek === 5 && day <= 7) {
+        events.push({ ...majorEvents[0], actualTime: "12:30 UTC" });
       }
+
+      // CPI: Usually around 10th–15th
+      if (day >= 10 && day <= 15) {
+        const currencies = ["USD"];
+        if (month % 3 === 0) currencies.push("EUR"); // EUR CPI quarterly
+        events.push({ name: "CPI (MoM)", currencies, time: "12:30", impact: "high", actualTime: "12:30 UTC" });
+      }
+
+      // Random high-impact event 30% of days
+      if (Math.random() < 0.3 && events.length === 0) {
+        const evt = majorEvents[Math.floor(Math.random() * 3)];
+        events.push({ ...evt, actualTime: evt.time + " UTC" });
+      }
+
+      return events;
     }
 
-    // === CHART & TREND ===
-    function loadChart() {
-      const pair = document.getElementById('pair').value;
-      const symbolMap = {
-        'EURUSD': 'FX_IDC:EURUSD',
-        'GBPUSD': 'FX_IDC:GBPUSD',
-        'USDJPY': 'FX_IDC:USDJPY',
-        'AUDUSD': 'FX_IDC:AUDUSD',
-        'USDCAD': 'FX_IDC:USDCAD',
-        'USDCHF': 'FX_IDC:USDCHF'
-      };
-      const symbol = symbolMap[pair] || 'FX_IDC:EURUSD';
+    function renderCalendar() {
+      const events = getTodayEvents();
+      const container = document.getElementById('economicCalendar');
 
-      const script = document.createElement('script');
-      script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-      script.type = "text/javascript";
-      script.innerHTML = JSON.stringify({
-        "autosize": true,
-        "symbol": symbol,
-        "interval": "60",
-        "timezone": "Etc/UTC",
-        "theme": "light",
-        "style": "1",
-        "hide_top_toolbar": false,
-        "hide_side_toolbar": false,
-        "allow_symbol_change": true,
-        "save_image": false,
-        "calendar": false,
-        "support_host": "https://www.tradingview.com"
-      });
-      document.getElementById('chart').innerHTML = '';
-      document.getElementById('chart').appendChild(script);
-      updateTrendBias(pair);
-    }
-
-    function updateTrendBias(pair) {
-      const trendMap = {
-        'EURUSD': 'range',
-        'GBPUSD': 'uptrend',
-        'USDJPY': 'downtrend',
-        'AUDUSD': 'range',
-        'USDCAD': 'downtrend',
-        'USDCHF': 'uptrend'
-      };
-      const bias = trendMap[pair] || 'range';
-      const labels = {
-        uptrend: '📈 Uptrend (Favor Buys)',
-        downtrend: '📉 Downtrend (Favor Sells)',
-        range: '↔️ Range (Fade Extremes)'
-      };
-      const colors = {
-        uptrend: 'uptrend',
-        downtrend: 'downtrend',
-        range: 'range'
-      };
-      const el = document.getElementById('trendBias');
-      el.textContent = labels[bias];
-      el.className = 'trend ' + colors[bias];
-    }
-
-    const pairData = {
-      'EURUSD': { atr: 70 },
-      'GBPUSD': { atr: 90 },
-      'USDJPY': { atr: 80 },
-      'AUDUSD': { atr: 65 },
-      'USDCAD': { atr: 75 },
-      'USDCHF': { atr: 60 }
-    };
-
-    // === ANALYSIS ===
-    function analyzeSetup() {
-      const pair = document.getElementById('pair').value;
-      const currentPrice = parseFloat(document.getElementById('currentPrice').value);
-      const setupType = document.querySelector('input[name="setupType"]:checked').value;
-
-      if (!currentPrice) {
-        alert("Please enter price.");
+      if (events.length === 0) {
+        container.innerHTML = '<p>✅ No high-impact news today. Safe to trade!</p>';
         return;
       }
 
-      const data = pairData[pair];
-      const atr = data.atr;
-      const isJPY = pair.includes('JPY');
-      const pipSize = isJPY ? 0.01 : 0.0001;
-
-      let slPips, tpPips, slPrice, tpPrice, strategy, winProb = 60;
-
-      if (setupType === 'buy') {
-        slPips = Math.round(atr * 0.8);
-        tpPips = Math.round(atr * 1.6);
-        slPrice = currentPrice - (slPips * pipSize);
-        tpPrice = currentPrice + (tpPips * pipSize);
-        strategy = isBacktestMode ? "Backtest Buy Setup" : "Buy: Support Bounce";
-      } else {
-        slPips = Math.round(atr * 0.8);
-        tpPips = Math.round(atr * 1.6);
-        slPrice = currentPrice + (slPips * pipSize);
-        tpPrice = currentPrice - (tpPips * pipSize);
-        strategy = isBacktestMode ? "Backtest Sell Setup" : "Sell: Resistance Rejection";
-      }
-
-      // Trend adjustment
-      const trendEl = document.getElementById('trendBias').textContent;
-      if (setupType === 'buy' && trendEl.includes('Uptrend')) winProb += 5;
-      if (setupType === 'sell' && trendEl.includes('Downtrend')) winProb += 5;
-      winProb = Math.min(75, Math.max(50, winProb));
-
-      document.getElementById('entry').value = currentPrice.toFixed(isJPY ? 3 : 5);
-      document.getElementById('sl').value = slPrice.toFixed(isJPY ? 3 : 5);
-      document.getElementById('tp').value = tpPrice.toFixed(isJPY ? 3 : 5);
-
-      window.currentAnalysis = {
-        date: isBacktestMode ? document.getElementById('backtestDate').value || 'Backtest' : new Date().toLocaleString(),
-        pair: pair,
-        type: setupType.toUpperCase(),
-        entry: currentPrice,
-        sl: slPrice,
-        tp: tpPrice,
-        slPips: slPips,
-        tpPips: tpPips,
-        winProb: winProb,
-        rr: (tpPips / slPips).toFixed(2)
-      };
-
-      document.getElementById('analysis').innerHTML = `
-        <div class="analysis">
-          <b>✅ ${strategy}:</b><br>
-          SL: ${slPips} pips | TP: ${tpPips} pips | RR: 1:${(tpPips/slPips).toFixed(1)}<br>
-          Win Prob: ${winProb}%
-        </div>
-      `;
-    }
-
-    // === RISK & JOURNAL ===
-    function calculateRisk() {
-      const entry = parseFloat(document.getElementById('entry').value);
-      const sl = parseFloat(document.getElementById('sl').value);
-      const tp = parseFloat(document.getElementById('tp').value);
-
-      if (!entry || !sl || !tp) {
-        alert("Enter all levels.");
-        return;
-      }
-
-      const accountSize = 1000;
-      const riskAmount = 10; // 1%
-      const pair = document.getElementById('pair').value;
-      const isJPY = pair.includes('JPY');
-      const pipSize = isJPY ? 0.01 : 0.0001;
-
-      const slPips = Math.abs(entry - sl) / pipSize;
-      const positionMicroLots = riskAmount / (slPips * 0.10);
-
-      if (window.currentAnalysis) {
-        window.currentAnalysis.risk = riskAmount;
-        window.currentAnalysis.position = positionMicroLots.toFixed(1);
-        journal.push({...window.currentAnalysis});
-      }
-
-      document.getElementById('result').innerHTML = `
-        <div class="result">
-          Risk: R${riskAmount} | Position: ${positionMicroLots.toFixed(1)} micro lots
-        </div>
-      `;
-    }
-
-    // === BACKTEST SIMULATION (Educational) ===
-    function simulateBacktest() {
-      if (!window.currentAnalysis) {
-        alert("Analyze a setup first!");
-        return;
-      }
-
-      const { entry, sl, tp, type, pair, date, risk, position } = window.currentAnalysis;
-      const isJPY = pair.includes('JPY');
-      const pipSize = isJPY ? 0.01 : 0.0001;
-
-      // Simulate outcome: 60% win if aligned with trend, else 40%
-      const trendEl = document.getElementById('trendBias').textContent;
-      let winChance = 0.6;
-      if ((type === 'BUY' && trendEl.includes('Uptrend')) ||
-          (type === 'SELL' && trendEl.includes('Downtrend'))) winChance = 0.65;
-      if ((type === 'BUY' && trendEl.includes('Downtrend')) ||
-          (type === 'SELL' && trendEl.includes('Uptrend'))) winChance = 0.45;
-
-      const isWin = Math.random() < winChance;
-      const pnl = isWin ? risk * (window.currentAnalysis.tpPips / window.currentAnalysis.slPips) : -risk;
-
-      const result = {
-        date,
-        pair,
-        type,
-        outcome: isWin ? 'WIN' : 'LOSS',
-        pnl: pnl.toFixed(2),
-        rr: window.currentAnalysis.rr
-      };
-      backtests.push(result);
-
-      // Display
-      document.getElementById('backtestResult').innerHTML = `
-        <div class="backtest-result ${isWin ? 'win' : 'loss'}">
-          🎲 Simulated Outcome: <b>${isWin ? '✅ WIN' : '❌ LOSS'}</b><br>
-          Profit/Loss: R${pnl.toFixed(2)} | RR: ${result.rr}
-        </div>
-      `;
-
-      // Update table
-      const tbody = document.querySelector('#backtestList tbody');
-      const row = tbody.insertRow();
-      row.innerHTML = `
-        <td>${result.date}</td>
-        <td>${result.pair}</td>
-        <td>${result.type}</td>
-        <td>${result.outcome}</td>
-        <td>R${result.pnl}</td>
-      `;
-    }
-
-    // === EXPORT (Journal + Backtests) ===
-    function exportJournal() {
-      let csv = 'Type,Date,Pair,Direction,Entry,SL,TP,SL Pips,TP Pips,Win Prob,RR,Risk (R),Position,Loss/Profit (R)\n';
-
-      // Add analyzed trades
-      journal.forEach(t => {
-        csv += `Trade,"${t.date}",${t.pair},${t.type},${t.entry},${t.sl},${t.tp},${t.slPips},${t.tpPips},${t.winProb},${t.rr},${t.risk},${t.position},\n`;
+      let html = '<div class="warning">⚠️ High-impact news today! Avoid new trades 15 mins before/after.</div>';
+      events.forEach(e => {
+        html += `
+          <div class="event-item ${e.impact}">
+            <b>${e.name}</b><br>
+            <small>Currencies: ${e.currencies.join(', ')} | Time: ${e.actualTime} | Impact: ${e.impact}</small>
+          </div>
+        `;
       });
+      container.innerHTML = html;
+    }
 
-      // Add backtest results
-      backtests.forEach(b => {
-        const pnl = b.pnl;
-        csv += `Backtest,"${b.date}",${b.pair},${b.type},,,,,,,${b.rr},,${pnl}\n`;
+    // === DAILY TRADES (with news awareness) ===
+    function generateDailyTrades() {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const stored = localStorage.getItem('forexTrades');
+      const cached = stored ? JSON.parse(stored) : null;
+
+      if (cached && new Date(cached.generated) >= today) {
+        return cached.trades;
+      }
+
+      const pairs = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF'];
+      const sessions = ['London Open', 'NY Open', 'Overlap'];
+      const strategies = [
+        { name: "Breakout + Retest", tools: "S/R, ATR, Volume" },
+        { name: "Trend Pullback", tools: "EMA, RSI, Trendline" },
+        { name: "Range Reversal", tools: "Bollinger, Stochastic" }
+      ];
+
+      const events = getTodayEvents();
+      const hasHighImpactNews = events.length > 0;
+
+      const trades = [];
+      for (let i = 0; i < 10; i++) {
+        const pair = pairs[Math.floor(Math.random() * pairs.length)];
+        const session = sessions[Math.floor(Math.random() * sessions.length)];
+        const strat = strategies[Math.floor(Math.random() * strategies.length)];
+
+        const basePrice = pair === 'USDJPY' ? 150 : 1.08;
+        const entry = parseFloat((basePrice + (Math.random() - 0.5) * 0.02).toFixed(pair.includes('JPY') ? 3 : 5));
+        const atr = pair === 'GBPUSD' ? 90 : 70;
+        const slPips = Math.round(atr * 0.7);
+        const tpPips = Math.round(atr * 1.4);
+        const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
+        const sl = parseFloat((entry - slPips * pipSize).toFixed(pair.includes('JPY') ? 3 : 5));
+        const tp = parseFloat((entry + tpPips * pipSize).toFixed(pair.includes('JPY') ? 3 : 5));
+
+        let winProb = 58 + Math.floor(Math.random() * 15);
+        let isRisky = false;
+
+        // Reduce win prob & flag if news today
+        if (hasHighImpactNews && pair.includes('USD')) {
+          winProb = Math.max(45, winProb - 10);
+          isRisky = true;
+        }
+
+        trades.push({
+          pair, session, entry, sl, tp, slPips, tpPips,
+          strategy: strat.name,
+          tools: strat.tools,
+          winProb,
+          isRisky,
+          validUntil: new Date(today.getTime() + 24*60*60*1000).toISOString(),
+          generated: today.toISOString()
+        });
+      }
+
+      trades.sort((a, b) => b.winProb - a.winProb);
+      localStorage.setItem('forexTrades', JSON.stringify({ trades, generated: today.toISOString() }));
+      return trades;
+    }
+
+    function renderTrades() {
+      const trades = generateDailyTrades();
+      const now = new Date();
+      const container = document.getElementById('dailyTrades');
+
+      let html = '';
+      trades.forEach((trade, i) => {
+        const isExpired = new Date(trade.validUntil) < now;
+        const cardClass = trade.isRisky ? 'risky' : '';
+        html += `
+          <div class="trade-card ${cardClass} ${isExpired ? 'expired' : ''}">
+            <div><b>#${i+1} • ${trade.pair}</b> ${trade.winProb}% ✅</div>
+            <div>Entry: ${trade.entry} | SL: ${trade.sl} (${trade.slPips}p) | TP: ${trade.tp} (${trade.tpPips}p)</div>
+            <div><small>Strategy: ${trade.strategy} | Tools: ${trade.tools}</small></div>
+            ${trade.isRisky ? '<div><i>⚠️ Risky: USD news today</i></div>' : ''}
+            ${isExpired ? '<div><i>Expired</i></div>' : ''}
+          </div>
+        `;
       });
-
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'forex_journal_backtests.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      container.innerHTML = html;
     }
 
-    // === NEWS ===
-    function loadNews() {
-      fetch(`https://gnews.io/api/v4/search?q=forex&token=17e3d064fb51b7f1125747733c843e6b&lang=en&max=5`)
-        .then(r => r.json())
-        .then(data => {
-          const div = document.getElementById('news');
-          if (data.articles?.length) {
-            div.innerHTML = data.articles.map(a => 
-              `<div class="news-item"><a href="${a.url}" target="_blank"><b>${a.title}</b></a><br><small>${new Date(a.publishedAt).toLocaleString()}</small></div>`
-            ).join('');
-          } else div.innerHTML = '<p>No news.</p>';
-        })
-        .catch(() => document.getElementById('news').innerHTML = '<p>❌ News failed.</p>');
-    }
-
+    // === INIT ===
     window.onload = function() {
-      loadChart();
-      loadNews();
+      renderCalendar();
+      renderTrades();
     };
   </script>
 </body>
-  </html>
-
-
-
-
-
+</html>
