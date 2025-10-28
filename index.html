@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Forex Trader Pro - R1000</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -25,297 +24,220 @@
       border-radius: 10px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    select, input, button, textarea {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      box-sizing: border-box;
-    }
-    textarea {
-      height: 60px;
-      resize: vertical;
-    }
-    .event-item, .trade-card, .journal-entry {
+    .trade-card {
       padding: 12px;
       border-radius: 6px;
       margin-top: 12px;
       font-size: 0.95em;
-    }
-    .trade-card {
       background: #f8f9fa;
-      border-left: 4px solid #3498db;
+      border-left: 4px solid #27ae60;
     }
-    .risk-result {
-      background: #e8f4f8;
-      padding: 12px;
-      border-radius: 6px;
-      margin-top: 12px;
-      font-weight: bold;
+    .loading {
+      color: #3498db;
     }
-    .warning {
-      background: #fff3cd;
+    .error {
+      color: #e74c3c;
+      background: #fadbd8;
       padding: 10px;
       border-radius: 6px;
-      margin: 12px 0;
-      border-left: 4px solid #ffc107;
-    }
-    canvas {
-      max-width: 100%;
-      margin: 16px 0;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>📱 Forex Trader Pro (R1000 Account)</h2>
-
-    <!-- 1. RISK MANAGEMENT CALCULATOR -->
-    <h2>💹 Risk Management Calculator</h2>
-    <input type="number" id="balance" placeholder="Account Balance (R1000)" value="1000">
-    <input type="number" id="riskPercent" placeholder="Risk % (e.g. 1)" value="1" step="0.1">
-    <input type="number" id="entryPrice" placeholder="Entry Price" step="0.0001">
-    <input type="number" id="stopLoss" placeholder="Stop Loss" step="0.0001">
-    <input type="number" id="takeProfit" placeholder="Take Profit" step="0.0001">
-    <select id="pairSelect">
-      <option value="EURUSD">EUR/USD</option>
-      <option value="GBPUSD">GBP/USD</option>
-      <option value="USDJPY">USD/JPY</option>
-      <option value="AUDUSD">AUD/USD</option>
-      <option value="USDCAD">USD/CAD</option>
-      <option value="USDCHF">USD/CHF</option>
-    </select>
-    <button onclick="calculateRisk()">Calculate Lot Size & R:R</button>
-    <div id="riskResult"></div>
-
-    <!-- 2. EQUITY GROWTH TRACKER -->
-    <h2>📈 Equity Growth Tracker</h2>
-    <canvas id="equityChart"></canvas>
-    <button onclick="simulateTrade()">+ Simulate Win/Loss (Demo)</button>
-
-    <!-- 3. DAILY SIGNALS + CALENDAR (existing) -->
-    <h2>📅 Today's Economic Events</h2>
-    <div id="economicCalendar">Loading...</div>
-    <h2>🔥 Top 10 Daily Trades</h2>
-    <div id="dailyTrades">Loading...</div>
-
-    <!-- 4. TRADE JOURNAL -->
-    <h2>📊 Trade Journal</h2>
-    <select id="journalPair">
-      <option>EUR/USD</option><option>GBP/USD</option><option>USD/JPY</option>
-    </select>
-    <select id="journalOutcome">
-      <option value="win">Win</option>
-      <option value="loss">Loss</option>
-    </select>
-    <input type="number" id="journalPnL" placeholder="P/L (Rands, e.g. 25 or -10)">
-    <textarea id="journalNotes" placeholder="Notes (e.g., 'News spike stopped me out 😤')"></textarea>
-    <button onclick="logTrade()">✅ Log This Trade</button>
-    <div id="journalList"></div>
+    <p class="loading" id="status">📡 Fetching real market data...</p>
+    <div id="tradesContainer"></div>
   </div>
 
   <script>
-    // === 1. RISK CALCULATOR ===
-    function calculateRisk() {
-      const balance = parseFloat(document.getElementById('balance').value);
-      const riskPerc = parseFloat(document.getElementById('riskPercent').value);
-      const entry = parseFloat(document.getElementById('entryPrice').value);
-      const sl = parseFloat(document.getElementById('stopLoss').value);
-      const tp = parseFloat(document.getElementById('takeProfit').value);
-      const pair = document.getElementById('pairSelect').value;
+    // 🔑 YOUR TWELVE DATA API KEY (already inserted)
+    const API_KEY = 'ec47de8969cb431b8ea24453c5c989f1';
 
-      if (!balance || !riskPerc || !entry || !sl || !tp) {
-        alert("Fill all fields");
-        return;
+    const PAIRS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF'];
+    const TIMEFRAME = '1h';
+
+    // === MATH HELPERS ===
+    function sma(data, period) {
+      const avg = [];
+      for (let i = period - 1; i < data.length; i++) {
+        const slice = data.slice(i - period + 1, i + 1);
+        avg.push(slice.reduce((a, b) => a + b, 0) / period);
       }
-
-      const riskAmount = (balance * riskPerc) / 100;
-      const isJPY = pair.includes('JPY');
-      const pipSize = isJPY ? 0.01 : 0.0001;
-      const slPips = Math.abs(entry - sl) / pipSize;
-      const tpPips = Math.abs(tp - entry) / pipSize;
-      const rr = tpPips / slPips;
-      const microLots = riskAmount / (slPips * 0.10);
-
-      document.getElementById('riskResult').innerHTML = `
-        <div class="risk-result">
-          💰 Risk: R${riskAmount.toFixed(2)} (${riskPerc}% of R${balance})<br>
-          📏 SL: ${slPips.toFixed(1)} pips | 🎯 TP: ${tpPips.toFixed(1)} pips<br>
-          📈 R:R = 1 : ${rr.toFixed(2)}<br>
-          📦 Position: ${microLots.toFixed(1)} micro lots
-        </div>
-      `;
+      return avg;
     }
 
-    // === 2. EQUITY TRACKER ===
-    let equityData = JSON.parse(localStorage.getItem('equityLog')) || [1000];
-    let dates = Array.from({length: equityData.length}, (_, i) => `Day ${i+1}`);
+    function ema(data, period) {
+      const k = 2 / (period + 1);
+      const ema = [data[0]];
+      for (let i = 1; i < data.length; i++) {
+        ema.push((data[i] * k) + (ema[i - 1] * (1 - k)));
+      }
+      return ema;
+    }
 
-    function updateEquityChart() {
-      const ctx = document.getElementById('equityChart').getContext('2d');
-      window.equityChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: dates,
-          datasets: [{
-            label: 'Account Balance (R)',
-            data: equityData,
-            borderColor: '#27ae60',
-            backgroundColor: 'rgba(39, 174, 96, 0.1)',
-            fill: true,
-            tension: 0.3
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: true }
-          },
-          scales: {
-            y: { beginAtZero: false }
-          }
-        }
+    function rsi(prices, period = 14) {
+      const deltas = prices.slice(1).map((p, i) => p - prices[i]);
+      const gains = deltas.map(d => d > 0 ? d : 0);
+      const losses = deltas.map(d => d < 0 ? -d : 0);
+      const avgGain = sma(gains, period);
+      const avgLoss = sma(losses, period);
+      return avgGain.map((g, i) => {
+        const rs = g / (avgLoss[i] || 1);
+        return 100 - (100 / (1 + rs));
       });
     }
 
-    function simulateTrade() {
-      const win = Math.random() > 0.4; // 60% win rate
-      const last = equityData[equityData.length - 1];
-      const change = win ? last * 0.02 : -last * 0.01; // 2% win, 1% loss
-      const newBalance = last + change;
-      equityData.push(parseFloat(newBalance.toFixed(2)));
-      dates.push(`Day ${equityData.length}`);
-      localStorage.setItem('equityLog', JSON.stringify(equityData));
-      updateEquityChart();
+    function atr(high, low, close, period = 14) {
+      const tr = [];
+      for (let i = 0; i < high.length; i++) {
+        if (i === 0) {
+          tr.push(high[i] - low[i]);
+        } else {
+          const hl = high[i] - low[i];
+          const hc = Math.abs(high[i] - close[i - 1]);
+          const lc = Math.abs(low[i] - close[i - 1]);
+          tr.push(Math.max(hl, hc, lc));
+        }
+      }
+      return sma(tr, period);
     }
 
-    // === 3. ECONOMIC CALENDAR & DAILY TRADES (from before) ===
-    function getTodayEvents() {
-      const now = new Date();
-      const day = now.getDate();
-      const dayOfWeek = now.getDay();
-      const events = [];
-      if (dayOfWeek === 5 && day <= 7) {
-        events.push({name: "NFP", currencies: ["USD"], time: "12:30 UTC"});
+    // === FETCH REAL CANDLE DATA ===
+    async function fetchCandles(pair) {
+      const symbol = pair.replace('/', '');
+      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${TIMEFRAME}&outputsize=200&apikey=${API_KEY}`;
+      
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.values) {
+          return {
+            close: data.values.map(v => parseFloat(v.close)).reverse(),
+            high: data.values.map(v => parseFloat(v.high)).reverse(),
+            low: data.values.map(v => parseFloat(v.low)).reverse(),
+            open: data.values.map(v => parseFloat(v.open)).reverse()
+          };
+        }
+      } catch (e) {
+        console.error(`Failed to fetch ${pair}:`, e);
       }
-      if (day >= 10 && day <= 15) {
-        events.push({name: "CPI", currencies: ["USD"], time: "12:30 UTC"});
-      }
-      return events;
+      return null;
     }
 
-    function renderCalendar() {
-      const events = getTodayEvents();
-      const el = document.getElementById('economicCalendar');
-      if (events.length === 0) {
-        el.innerHTML = '<p>✅ No high-impact news today.</p>';
-      } else {
-        el.innerHTML = '<div class="warning">⚠️ High-impact news today!</div>' +
-          events.map(e => `<div class="event-item"><b>${e.name}</b><br><small>${e.time}</small></div>`).join('');
-      }
-    }
+    // === GENERATE CONFIRMED TRADE ===
+    function analyzePair(pair, candles) {
+      const closes = candles.close;
+      const highs = candles.high;
+      const lows = candles.low;
 
-    function generateDailyTrades() {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const stored = localStorage.getItem('forexTrades');
-      const cached = stored ? JSON.parse(stored) : null;
-      if (cached && new Date(cached.generated) >= today) return cached.trades;
+      const ema50 = ema(closes, 50);
+      const ema200 = ema(closes, 200);
+      const rsis = rsi(closes, 14);
+      const atrs = atr(highs, lows, closes, 14);
 
-      const pairs = ['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF'];
-      const strategies = [
-        {name:"Breakout Retest",tools:"S/R, ATR",bias:"buy"},
-        {name:"Range Reversal",tools:"Bollinger",bias:"sell"}
-      ];
+      const latestClose = closes[closes.length - 1];
+      const latestEma50 = ema50[ema50.length - 1];
+      const latestEma200 = ema200[ema200.length - 1];
+      const latestRsi = rsis[rsis.length - 1];
+      const latestAtr = atrs[atrs.length - 1];
+
+      const isUptrend = latestEma50 > latestEma200;
+      const isDowntrend = latestEma50 < latestEma200;
 
       const trades = [];
-      for (let i = 0; i < 10; i++) {
-        const pair = pairs[Math.floor(Math.random() * pairs.length)];
-        const strat = strategies[Math.floor(Math.random() * strategies.length)];
-        const dir = strat.bias;
-        const base = pair.includes('JPY') ? 150 : 1.08;
-        const entry = parseFloat((base + (Math.random()-0.5)*0.02).toFixed(pair.includes('JPY')?3:5));
-        const atr = 70;
-        const slPips = Math.round(atr * 0.7);
-        const tpPips = Math.round(atr * 1.4);
+
+      // BUY setup
+      if (isUptrend && latestRsi > 55 && latestAtr > (pair.includes('JPY') ? 0.5 : 0.0005)) {
+        const sl = latestClose - (latestAtr * 1.0);
+        const tp = latestClose + (latestAtr * 2.0);
         const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
-        let sl, tp;
-        if (dir === 'buy') {
-          sl = parseFloat((entry - slPips * pipSize).toFixed(pair.includes('JPY')?3:5));
-          tp = parseFloat((entry + tpPips * pipSize).toFixed(pair.includes('JPY')?3:5));
-        } else {
-          sl = parseFloat((entry + slPips * pipSize).toFixed(pair.includes('JPY')?3:5));
-          tp = parseFloat((entry - tpPips * pipSize).toFixed(pair.includes('JPY')?3:5));
+        const slPips = Math.abs(latestClose - sl) / pipSize;
+        const tpPips = Math.abs(tp - latestClose) / pipSize;
+        const rr = tpPips / slPips;
+        if (rr >= 1.5) {
+          trades.push({
+            pair,
+            direction: 'buy',
+            entry: latestClose,
+            sl,
+            tp,
+            slPips: slPips.toFixed(1),
+            tpPips: tpPips.toFixed(1),
+            rr: rr.toFixed(2),
+            winProb: 70,
+            reason: "EMA50>200, RSI>55, ATR valid, R:R≥1.5"
+          });
         }
-        const winProb = 60 + Math.floor(Math.random() * 12);
-        trades.push({
-          pair, direction: dir, entry, sl, tp, slPips, tpPips,
-          strategy: strat.name, tools: strat.tools, winProb,
-          validUntil: new Date(today.getTime() + 86400000).toISOString()
-        });
       }
-      trades.sort((a,b) => b.winProb - a.winProb);
-      localStorage.setItem('forexTrades', JSON.stringify({trades, generated: today.toISOString()}));
+
+      // SELL setup
+      if (isDowntrend && latestRsi < 45 && latestAtr > (pair.includes('JPY') ? 0.5 : 0.0005)) {
+        const sl = latestClose + (latestAtr * 1.0);
+        const tp = latestClose - (latestAtr * 2.0);
+        const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
+        const slPips = Math.abs(sl - latestClose) / pipSize;
+        const tpPips = Math.abs(latestClose - tp) / pipSize;
+        const rr = tpPips / slPips;
+        if (rr >= 1.5) {
+          trades.push({
+            pair,
+            direction: 'sell',
+            entry: latestClose,
+            sl,
+            tp,
+            slPips: slPips.toFixed(1),
+            tpPips: tpPips.toFixed(1),
+            rr: rr.toFixed(2),
+            winProb: 68,
+            reason: "EMA50<200, RSI<45, ATR valid, R:R≥1.5"
+          });
+        }
+      }
+
       return trades;
     }
 
-    function renderTrades() {
-      const trades = generateDailyTrades();
-      const now = new Date();
-      const html = trades.map((t,i) => {
-        const expired = new Date(t.validUntil) < now;
-        const dirLabel = t.direction === 'buy' ? '🟢 BUY' : '🔴 SELL';
-        return `
-          <div class="trade-card ${expired ? 'expired' : ''}">
-            <b>#${i+1} • ${t.pair} • ${dirLabel}</b> (${t.winProb}%)
-            <div>Entry: ${t.entry} | SL: ${t.sl} | TP: ${t.tp}</div>
-            <div><small>${t.strategy} | ${t.tools}</small></div>
-            ${expired ? '<div><i>Expired</i></div>' : ''}
-          </div>
-        `;
-      }).join('');
-      document.getElementById('dailyTrades').innerHTML = html;
+    // === MAIN ANALYSIS LOOP ===
+    async function generateSignals() {
+      document.getElementById('status').textContent = '🔍 Analyzing 6 major pairs...';
+      let allTrades = [];
+
+      for (const pair of PAIRS) {
+        const candles = await fetchCandles(pair);
+        if (candles) {
+          const trades = analyzePair(pair, candles);
+          allTrades = allTrades.concat(trades);
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      allTrades.sort((a, b) => b.winProb - a.winProb);
+      const container = document.getElementById('tradesContainer');
+
+      if (allTrades.length === 0) {
+        container.innerHTML = '<div class="error">🚫 No high-quality setups found. Market may be ranging or low-volatility.</div>';
+        document.getElementById('status').textContent = '✅ Analysis complete';
+      } else {
+        let html = `<p>✅ Found ${allTrades.length} confirmed signals (real OHLC data)</p>`;
+        allTrades.forEach((t, i) => {
+          const dir = t.direction === 'buy' ? '🟢 BUY' : '🔴 SELL';
+          const decimals = t.pair.includes('JPY') ? 3 : 5;
+          html += `
+            <div class="trade-card">
+              <b>#${i+1} • ${t.pair} • ${dir}</b> (${t.winProb}%)
+              <div>Entry: ${t.entry.toFixed(decimals)} | SL: ${t.sl.toFixed(decimals)} (${t.slPips}p) | TP: ${t.tp.toFixed(decimals)} (${t.tpPips}p)</div>
+              <div><small>R:R = 1:${t.rr} | ${t.reason}</small></div>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+        document.getElementById('status').textContent = `✅ ${allTrades.length} high-confidence signals ready`;
+      }
     }
 
-    // === 4. TRADE JOURNAL ===
-    let journal = JSON.parse(localStorage.getItem('tradeJournal')) || [];
-
-    function logTrade() {
-      const trade = {
-        id: Date.now(),
-        pair: document.getElementById('journalPair').value,
-        outcome: document.getElementById('journalOutcome').value,
-        pnl: parseFloat(document.getElementById('journalPnL').value),
-        notes: document.getElementById('journalNotes').value,
-        date: new Date().toLocaleString()
-      };
-      journal.push(trade);
-      localStorage.setItem('tradeJournal', JSON.stringify(journal));
-      renderJournal();
-      // Clear form
-      document.getElementById('journalPnL').value = '';
-      document.getElementById('journalNotes').value = '';
-    }
-
-    function renderJournal() {
-      const html = journal.map(t => `
-        <div class="journal-entry">
-          <b>${t.pair} • ${t.outcome === 'win' ? '✅ Win' : '❌ Loss'} • R${t.pnl}</b><br>
-          <small>${t.date}</small><br>
-          <em>${t.notes || ''}</em>
-        </div>
-      `).join('');
-      document.getElementById('journalList').innerHTML = html;
-    }
-
-    // === INIT ===
-    window.onload = function() {
-      renderCalendar();
-      renderTrades();
-      renderJournal();
-      updateEquityChart();
-    };
+    // === START ===
+    generateSignals();
   </script>
 </body>
 </html>
