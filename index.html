@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Forex Trader Pro - R1000</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -24,7 +25,7 @@
       border-radius: 10px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    select, input, button {
+    select, input, button, textarea {
       width: 100%;
       padding: 10px;
       margin: 8px 0;
@@ -32,45 +33,26 @@
       border-radius: 6px;
       box-sizing: border-box;
     }
-    .radio-group {
-      display: flex;
-      gap: 12px;
-      margin: 8px 0;
-      flex-wrap: wrap;
+    textarea {
+      height: 60px;
+      resize: vertical;
     }
-    .radio-group label {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-weight: bold;
-    }
-    button {
-      background: #27ae60;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #219653;
-    }
-    .news-item, .event-item {
-      padding: 10px 0;
-      border-bottom: 1px solid #eee;
-    }
-    .event-item.high { background: #ffeaa7; border-left: 3px solid #e17055; }
-    .event-item.medium { background: #fdcb6e; }
-    .event-item.low { opacity: 0.7; }
-    .trade-card {
+    .event-item, .trade-card, .journal-entry {
       padding: 12px;
       border-radius: 6px;
       margin-top: 12px;
       font-size: 0.95em;
+    }
+    .trade-card {
       background: #f8f9fa;
       border-left: 4px solid #3498db;
     }
-    .trade-card.risky {
-      border-left-color: #e74c3c;
-      background: #fadbd8;
+    .risk-result {
+      background: #e8f4f8;
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-weight: bold;
     }
     .warning {
       background: #fff3cd;
@@ -79,174 +61,260 @@
       margin: 12px 0;
       border-left: 4px solid #ffc107;
     }
+    canvas {
+      max-width: 100%;
+      margin: 16px 0;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>📱 Forex Trader Pro (R1000 Account)</h2>
 
-    <!-- ECONOMIC CALENDAR -->
+    <!-- 1. RISK MANAGEMENT CALCULATOR -->
+    <h2>💹 Risk Management Calculator</h2>
+    <input type="number" id="balance" placeholder="Account Balance (R1000)" value="1000">
+    <input type="number" id="riskPercent" placeholder="Risk % (e.g. 1)" value="1" step="0.1">
+    <input type="number" id="entryPrice" placeholder="Entry Price" step="0.0001">
+    <input type="number" id="stopLoss" placeholder="Stop Loss" step="0.0001">
+    <input type="number" id="takeProfit" placeholder="Take Profit" step="0.0001">
+    <select id="pairSelect">
+      <option value="EURUSD">EUR/USD</option>
+      <option value="GBPUSD">GBP/USD</option>
+      <option value="USDJPY">USD/JPY</option>
+      <option value="AUDUSD">AUD/USD</option>
+      <option value="USDCAD">USD/CAD</option>
+      <option value="USDCHF">USD/CHF</option>
+    </select>
+    <button onclick="calculateRisk()">Calculate Lot Size & R:R</button>
+    <div id="riskResult"></div>
+
+    <!-- 2. EQUITY GROWTH TRACKER -->
+    <h2>📈 Equity Growth Tracker</h2>
+    <canvas id="equityChart"></canvas>
+    <button onclick="simulateTrade()">+ Simulate Win/Loss (Demo)</button>
+
+    <!-- 3. DAILY SIGNALS + CALENDAR (existing) -->
     <h2>📅 Today's Economic Events</h2>
-    <div id="economicCalendar">Loading events...</div>
-
-    <!-- DAILY TRADES -->
+    <div id="economicCalendar">Loading...</div>
     <h2>🔥 Top 10 Daily Trades</h2>
-    <div id="dailyTrades"></div>
+    <div id="dailyTrades">Loading...</div>
 
-    <!-- Rest of app (you can add chart/news below if needed) -->
+    <!-- 4. TRADE JOURNAL -->
+    <h2>📊 Trade Journal</h2>
+    <select id="journalPair">
+      <option>EUR/USD</option><option>GBP/USD</option><option>USD/JPY</option>
+    </select>
+    <select id="journalOutcome">
+      <option value="win">Win</option>
+      <option value="loss">Loss</option>
+    </select>
+    <input type="number" id="journalPnL" placeholder="P/L (Rands, e.g. 25 or -10)">
+    <textarea id="journalNotes" placeholder="Notes (e.g., 'News spike stopped me out 😤')"></textarea>
+    <button onclick="logTrade()">✅ Log This Trade</button>
+    <div id="journalList"></div>
   </div>
 
   <script>
-    // === SIMULATED ECONOMIC CALENDAR (High-Impact Only) ===
+    // === 1. RISK CALCULATOR ===
+    function calculateRisk() {
+      const balance = parseFloat(document.getElementById('balance').value);
+      const riskPerc = parseFloat(document.getElementById('riskPercent').value);
+      const entry = parseFloat(document.getElementById('entryPrice').value);
+      const sl = parseFloat(document.getElementById('stopLoss').value);
+      const tp = parseFloat(document.getElementById('takeProfit').value);
+      const pair = document.getElementById('pairSelect').value;
+
+      if (!balance || !riskPerc || !entry || !sl || !tp) {
+        alert("Fill all fields");
+        return;
+      }
+
+      const riskAmount = (balance * riskPerc) / 100;
+      const isJPY = pair.includes('JPY');
+      const pipSize = isJPY ? 0.01 : 0.0001;
+      const slPips = Math.abs(entry - sl) / pipSize;
+      const tpPips = Math.abs(tp - entry) / pipSize;
+      const rr = tpPips / slPips;
+      const microLots = riskAmount / (slPips * 0.10);
+
+      document.getElementById('riskResult').innerHTML = `
+        <div class="risk-result">
+          💰 Risk: R${riskAmount.toFixed(2)} (${riskPerc}% of R${balance})<br>
+          📏 SL: ${slPips.toFixed(1)} pips | 🎯 TP: ${tpPips.toFixed(1)} pips<br>
+          📈 R:R = 1 : ${rr.toFixed(2)}<br>
+          📦 Position: ${microLots.toFixed(1)} micro lots
+        </div>
+      `;
+    }
+
+    // === 2. EQUITY TRACKER ===
+    let equityData = JSON.parse(localStorage.getItem('equityLog')) || [1000];
+    let dates = Array.from({length: equityData.length}, (_, i) => `Day ${i+1}`);
+
+    function updateEquityChart() {
+      const ctx = document.getElementById('equityChart').getContext('2d');
+      window.equityChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [{
+            label: 'Account Balance (R)',
+            data: equityData,
+            borderColor: '#27ae60',
+            backgroundColor: 'rgba(39, 174, 96, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: true }
+          },
+          scales: {
+            y: { beginAtZero: false }
+          }
+        }
+      });
+    }
+
+    function simulateTrade() {
+      const win = Math.random() > 0.4; // 60% win rate
+      const last = equityData[equityData.length - 1];
+      const change = win ? last * 0.02 : -last * 0.01; // 2% win, 1% loss
+      const newBalance = last + change;
+      equityData.push(parseFloat(newBalance.toFixed(2)));
+      dates.push(`Day ${equityData.length}`);
+      localStorage.setItem('equityLog', JSON.stringify(equityData));
+      updateEquityChart();
+    }
+
+    // === 3. ECONOMIC CALENDAR & DAILY TRADES (from before) ===
     function getTodayEvents() {
       const now = new Date();
       const day = now.getDate();
-      const month = now.getMonth();
-      const year = now.getFullYear();
-      const dayOfWeek = now.getDay(); // 0 = Sun, 5 = Fri
-
+      const dayOfWeek = now.getDay();
       const events = [];
-
-      // High-impact recurring events
-      const majorEvents = [
-        { name: "Non-Farm Payrolls (NFP)", currencies: ["USD"], time: "12:30", impact: "high" },
-        { name: "CPI (MoM)", currencies: ["USD", "EUR", "GBP"], time: "12:30", impact: "high" },
-        { name: "Interest Rate Decision", currencies: ["USD", "EUR", "GBP", "JPY"], time: "11:00", impact: "high" },
-        { name: "Retail Sales", currencies: ["USD"], time: "12:30", impact: "high" },
-        { name: "GDP (Final)", currencies: ["USD", "EUR"], time: "12:30", impact: "high" },
-        { name: "FOMC Meeting", currencies: ["USD"], time: "18:00", impact: "high" }
-      ];
-
-      // Simulate: NFP = first Friday of month
       if (dayOfWeek === 5 && day <= 7) {
-        events.push({ ...majorEvents[0], actualTime: "12:30 UTC" });
+        events.push({name: "NFP", currencies: ["USD"], time: "12:30 UTC"});
       }
-
-      // CPI: Usually around 10th–15th
       if (day >= 10 && day <= 15) {
-        const currencies = ["USD"];
-        if (month % 3 === 0) currencies.push("EUR"); // EUR CPI quarterly
-        events.push({ name: "CPI (MoM)", currencies, time: "12:30", impact: "high", actualTime: "12:30 UTC" });
+        events.push({name: "CPI", currencies: ["USD"], time: "12:30 UTC"});
       }
-
-      // Random high-impact event 30% of days
-      if (Math.random() < 0.3 && events.length === 0) {
-        const evt = majorEvents[Math.floor(Math.random() * 3)];
-        events.push({ ...evt, actualTime: evt.time + " UTC" });
-      }
-
       return events;
     }
 
     function renderCalendar() {
       const events = getTodayEvents();
-      const container = document.getElementById('economicCalendar');
-
+      const el = document.getElementById('economicCalendar');
       if (events.length === 0) {
-        container.innerHTML = '<p>✅ No high-impact news today. Safe to trade!</p>';
-        return;
+        el.innerHTML = '<p>✅ No high-impact news today.</p>';
+      } else {
+        el.innerHTML = '<div class="warning">⚠️ High-impact news today!</div>' +
+          events.map(e => `<div class="event-item"><b>${e.name}</b><br><small>${e.time}</small></div>`).join('');
       }
-
-      let html = '<div class="warning">⚠️ High-impact news today! Avoid new trades 15 mins before/after.</div>';
-      events.forEach(e => {
-        html += `
-          <div class="event-item ${e.impact}">
-            <b>${e.name}</b><br>
-            <small>Currencies: ${e.currencies.join(', ')} | Time: ${e.actualTime} | Impact: ${e.impact}</small>
-          </div>
-        `;
-      });
-      container.innerHTML = html;
     }
 
-    // === DAILY TRADES (with news awareness) ===
     function generateDailyTrades() {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const stored = localStorage.getItem('forexTrades');
       const cached = stored ? JSON.parse(stored) : null;
+      if (cached && new Date(cached.generated) >= today) return cached.trades;
 
-      if (cached && new Date(cached.generated) >= today) {
-        return cached.trades;
-      }
-
-      const pairs = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF'];
-      const sessions = ['London Open', 'NY Open', 'Overlap'];
+      const pairs = ['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF'];
       const strategies = [
-        { name: "Breakout + Retest", tools: "S/R, ATR, Volume" },
-        { name: "Trend Pullback", tools: "EMA, RSI, Trendline" },
-        { name: "Range Reversal", tools: "Bollinger, Stochastic" }
+        {name:"Breakout Retest",tools:"S/R, ATR",bias:"buy"},
+        {name:"Range Reversal",tools:"Bollinger",bias:"sell"}
       ];
-
-      const events = getTodayEvents();
-      const hasHighImpactNews = events.length > 0;
 
       const trades = [];
       for (let i = 0; i < 10; i++) {
         const pair = pairs[Math.floor(Math.random() * pairs.length)];
-        const session = sessions[Math.floor(Math.random() * sessions.length)];
         const strat = strategies[Math.floor(Math.random() * strategies.length)];
-
-        const basePrice = pair === 'USDJPY' ? 150 : 1.08;
-        const entry = parseFloat((basePrice + (Math.random() - 0.5) * 0.02).toFixed(pair.includes('JPY') ? 3 : 5));
-        const atr = pair === 'GBPUSD' ? 90 : 70;
+        const dir = strat.bias;
+        const base = pair.includes('JPY') ? 150 : 1.08;
+        const entry = parseFloat((base + (Math.random()-0.5)*0.02).toFixed(pair.includes('JPY')?3:5));
+        const atr = 70;
         const slPips = Math.round(atr * 0.7);
         const tpPips = Math.round(atr * 1.4);
         const pipSize = pair.includes('JPY') ? 0.01 : 0.0001;
-        const sl = parseFloat((entry - slPips * pipSize).toFixed(pair.includes('JPY') ? 3 : 5));
-        const tp = parseFloat((entry + tpPips * pipSize).toFixed(pair.includes('JPY') ? 3 : 5));
-
-        let winProb = 58 + Math.floor(Math.random() * 15);
-        let isRisky = false;
-
-        // Reduce win prob & flag if news today
-        if (hasHighImpactNews && pair.includes('USD')) {
-          winProb = Math.max(45, winProb - 10);
-          isRisky = true;
+        let sl, tp;
+        if (dir === 'buy') {
+          sl = parseFloat((entry - slPips * pipSize).toFixed(pair.includes('JPY')?3:5));
+          tp = parseFloat((entry + tpPips * pipSize).toFixed(pair.includes('JPY')?3:5));
+        } else {
+          sl = parseFloat((entry + slPips * pipSize).toFixed(pair.includes('JPY')?3:5));
+          tp = parseFloat((entry - tpPips * pipSize).toFixed(pair.includes('JPY')?3:5));
         }
-
+        const winProb = 60 + Math.floor(Math.random() * 12);
         trades.push({
-          pair, session, entry, sl, tp, slPips, tpPips,
-          strategy: strat.name,
-          tools: strat.tools,
-          winProb,
-          isRisky,
-          validUntil: new Date(today.getTime() + 24*60*60*1000).toISOString(),
-          generated: today.toISOString()
+          pair, direction: dir, entry, sl, tp, slPips, tpPips,
+          strategy: strat.name, tools: strat.tools, winProb,
+          validUntil: new Date(today.getTime() + 86400000).toISOString()
         });
       }
-
-      trades.sort((a, b) => b.winProb - a.winProb);
-      localStorage.setItem('forexTrades', JSON.stringify({ trades, generated: today.toISOString() }));
+      trades.sort((a,b) => b.winProb - a.winProb);
+      localStorage.setItem('forexTrades', JSON.stringify({trades, generated: today.toISOString()}));
       return trades;
     }
 
     function renderTrades() {
       const trades = generateDailyTrades();
       const now = new Date();
-      const container = document.getElementById('dailyTrades');
-
-      let html = '';
-      trades.forEach((trade, i) => {
-        const isExpired = new Date(trade.validUntil) < now;
-        const cardClass = trade.isRisky ? 'risky' : '';
-        html += `
-          <div class="trade-card ${cardClass} ${isExpired ? 'expired' : ''}">
-            <div><b>#${i+1} • ${trade.pair}</b> ${trade.winProb}% ✅</div>
-            <div>Entry: ${trade.entry} | SL: ${trade.sl} (${trade.slPips}p) | TP: ${trade.tp} (${trade.tpPips}p)</div>
-            <div><small>Strategy: ${trade.strategy} | Tools: ${trade.tools}</small></div>
-            ${trade.isRisky ? '<div><i>⚠️ Risky: USD news today</i></div>' : ''}
-            ${isExpired ? '<div><i>Expired</i></div>' : ''}
+      const html = trades.map((t,i) => {
+        const expired = new Date(t.validUntil) < now;
+        const dirLabel = t.direction === 'buy' ? '🟢 BUY' : '🔴 SELL';
+        return `
+          <div class="trade-card ${expired ? 'expired' : ''}">
+            <b>#${i+1} • ${t.pair} • ${dirLabel}</b> (${t.winProb}%)
+            <div>Entry: ${t.entry} | SL: ${t.sl} | TP: ${t.tp}</div>
+            <div><small>${t.strategy} | ${t.tools}</small></div>
+            ${expired ? '<div><i>Expired</i></div>' : ''}
           </div>
         `;
-      });
-      container.innerHTML = html;
+      }).join('');
+      document.getElementById('dailyTrades').innerHTML = html;
+    }
+
+    // === 4. TRADE JOURNAL ===
+    let journal = JSON.parse(localStorage.getItem('tradeJournal')) || [];
+
+    function logTrade() {
+      const trade = {
+        id: Date.now(),
+        pair: document.getElementById('journalPair').value,
+        outcome: document.getElementById('journalOutcome').value,
+        pnl: parseFloat(document.getElementById('journalPnL').value),
+        notes: document.getElementById('journalNotes').value,
+        date: new Date().toLocaleString()
+      };
+      journal.push(trade);
+      localStorage.setItem('tradeJournal', JSON.stringify(journal));
+      renderJournal();
+      // Clear form
+      document.getElementById('journalPnL').value = '';
+      document.getElementById('journalNotes').value = '';
+    }
+
+    function renderJournal() {
+      const html = journal.map(t => `
+        <div class="journal-entry">
+          <b>${t.pair} • ${t.outcome === 'win' ? '✅ Win' : '❌ Loss'} • R${t.pnl}</b><br>
+          <small>${t.date}</small><br>
+          <em>${t.notes || ''}</em>
+        </div>
+      `).join('');
+      document.getElementById('journalList').innerHTML = html;
     }
 
     // === INIT ===
     window.onload = function() {
       renderCalendar();
       renderTrades();
+      renderJournal();
+      updateEquityChart();
     };
   </script>
 </body>
