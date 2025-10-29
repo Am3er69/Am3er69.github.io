@@ -3,252 +3,152 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Forex Trader Pro - R1000</title>
+  <title>AI Forex Signal Analyzer</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 12px;
-      background: #f5f5f5;
-      color: #333;
+      font-family: "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 20px;
     }
-    h2 {
-      margin-top: 16px;
-      color: #2c3e50;
+    h1 {
+      text-align: center;
+      color: #38bdf8;
     }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: white;
+    #signalOutput {
+      background: #1e293b;
       padding: 16px;
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-radius: 12px;
+      margin-top: 20px;
+      box-shadow: 0 0 12px rgba(56,189,248,0.3);
     }
-    .trade-card {
-      padding: 12px;
-      border-radius: 6px;
-      margin-top: 12px;
-      font-size: 0.95em;
-      background: #f8f9fa;
-      border-left: 4px solid #27ae60;
-    }
-    .loading { color: #3498db; }
-    .error { 
-      color: #e74c3c;
-      background: #fadbd8;
+    .signal {
+      background: #334155;
+      border-left: 4px solid #38bdf8;
       padding: 10px;
-      border-radius: 6px;
-    }
-    .api-error {
-      background: #fef6f6;
-      border: 1px solid #e74c3c;
-      padding: 12px;
-      border-radius: 6px;
-      margin-top: 12px;
-    }
-    .session-info {
-      font-size: 0.9em;
-      color: #7f8c8d;
       margin-bottom: 8px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    #lastUpdated {
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+    button {
+      display: block;
+      margin: 16px auto;
+      background: #38bdf8;
+      color: #0f172a;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    button:hover {
+      background: #0ea5e9;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>🔥 Daily Trading Signals (R1000 Optimized)</h2>
-    <div class="session-info">Session: <span id="sessionLabel">Loading...</span></div>
-    <p class="loading" id="status">📡 Fetching real 1H & 4H market data...</p>
-    <div id="tradesContainer"></div>
-  </div>
+  <h1>AI Forex Signal Analyzer 💹</h1>
+  <button onclick="refreshSignals()">🔁 Refresh Now</button>
+  <div id="signalOutput">Loading signals...</div>
+  <p id="lastUpdated"></p>
 
   <script>
-    const API_KEY = 'ec47de8969cb431b8ea24453c5c989f1';
-    // Only 4 high-impact pairs to stay under rate limits
-    const PAIRS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'XAU/USD'];
-    const ACCOUNT_BALANCE = 1000;
-    const RISK_PERCENT = 1;
+    // ====== BASIC INDICATOR FUNCTIONS ======
+    function sma(values, period) {
+      const result = [];
+      for (let i = 0; i < values.length; i++) {
+        if (i < period - 1) result.push(null);
+        else {
+          const slice = values.slice(i - period + 1, i + 1);
+          result.push(slice.reduce((a, b) => a + b, 0) / period);
+        }
+      }
+      return result;
+    }
 
+    function ema(values, period) {
+      const k = 2 / (period + 1);
+      const result = [values[0]];
+      for (let i = 1; i < values.length; i++) {
+        result.push(values[i] * k + result[i - 1] * (1 - k));
+      }
+      return result;
+    }
+
+    function rsi(values, period = 14) {
+      const gains = [], losses = [];
+      for (let i = 1; i < values.length; i++) {
+        const diff = values[i] - values[i - 1];
+        gains.push(Math.max(diff, 0));
+        losses.push(Math.max(-diff, 0));
+      }
+      const avgGain = sma(gains, period);
+      const avgLoss = sma(losses, period);
+      const result = [null];
+      for (let i = 1; i < values.length; i++) {
+        const rs = avgLoss[i - 1] === 0 ? 100 : avgGain[i - 1] / avgLoss[i - 1];
+        result.push(100 - 100 / (1 + rs));
+      }
+      return result;
+    }
+
+    function atr(high, low, close, period = 14) {
+      const trs = [];
+      for (let i = 1; i < close.length; i++) {
+        trs.push(Math.max(
+          high[i] - low[i],
+          Math.abs(high[i] - close[i - 1]),
+          Math.abs(low[i] - close[i - 1])
+        ));
+      }
+      return sma(trs, period);
+    }
+
+    // ====== HELPER FUNCTIONS ======
     function getCurrentSession() {
-      const hour = new Date().getUTCHours();
-      if (hour >= 7 && hour < 15) return 'London';
-      if (hour >= 12 && hour < 21) return 'New York';
-      return 'Asian';
-    }
-
-    function isPairActiveInSession(pair, session) {
-      if (session === 'London') return pair.includes('EUR') || pair.includes('GBP') || pair.includes('XAU');
-      if (session === 'New York') return pair.includes('USD') || pair.includes('XAU');
-      if (session === 'Asian') return pair.includes('JPY');
-      return true;
-    }
-
-    const sma = (data, p) => {
-      const avg = [];
-      for (let i = p - 1; i < data.length; i++) {
-        avg.push(data.slice(i - p + 1, i + 1).reduce((a, b) => a + b, 0) / p);
-      }
-      return avg;
-    };
-
-    const ema = (data, p) => {
-      const k = 2 / (p + 1);
-      const e = [data[0]];
-      for (let i = 1; i < data.length; i++) e.push(data[i] * k + e[i - 1] * (1 - k));
-      return e;
-    };
-
-    const rsi = (prices, p = 14) => {
-      const deltas = prices.slice(1).map((v, i) => v - prices[i]);
-      const gains = deltas.map(d => d > 0 ? d : 0);
-      const losses = deltas.map(d => d < 0 ? -d : 0);
-      const avgGain = sma(gains, p);
-      const avgLoss = sma(losses, p);
-      return avgGain.map((g, i) => 100 - (100 / (1 + (g / (avgLoss[i] || 1)))));
-    };
-
-    const atr = (high, low, close, p = 14) => {
-      const tr = [high[0] - low[0]];
-      for (let i = 1; i < high.length; i++) {
-        tr.push(Math.max(high[i] - low[i], Math.abs(high[i] - close[i - 1]), Math.abs(low[i] - close[i - 1])));
-      }
-      return sma(tr, p);
-    };
-
-    async function fetchCandles(pair, interval) {
-      const symbol = pair.replace('/', '');
-      const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=200&apikey=${API_KEY}`;
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.code === 403 || data.message === "This API key is invalid.") {
-          throw new Error("INVALID_API_KEY");
-        }
-        if (data.values) {
-          return {
-            close: data.values.map(v => parseFloat(v.close)).reverse(),
-            high: data.values.map(v => parseFloat(v.high)).reverse(),
-            low: data.values.map(v => parseFloat(v.low)).reverse()
-          };
-        }
-      } catch (e) {
-        if (e.message === "INVALID_API_KEY") throw e;
-        console.error(`Failed ${pair} ${interval}:`, e);
-      }
-      return null;
-    }
-
-    function isHighImpactNewsWindow(pair) {
       const now = new Date();
-      const day = now.getDate();
-      const dayOfWeek = now.getDay();
       const hour = now.getUTCHours();
-      const minute = now.getUTCMinutes();
-      const timeInMinutes = hour * 60 + minute;
-      if (dayOfWeek === 5 && day <= 7 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) return pair.includes('USD');
-      if (day >= 10 && day <= 15 && Math.abs(timeInMinutes - (12*60 + 30)) <= 30) return pair.includes('USD');
-      return false;
+      if (hour >= 0 && hour < 8) return "Asian";
+      if (hour >= 8 && hour < 16) return "London";
+      return "New York";
     }
 
     function getPipSize(pair) {
-      if (pair.includes('JPY')) return 0.01;
-      if (pair.includes('XAU')) return 0.1;
+      if (pair.includes("JPY")) return 0.01;
       return 0.0001;
     }
 
-    function buildTrade(pair, direction, entry, sl, tp, slPips, tpPips, rr, scoreBonus = 0) {
-      const riskAmount = (ACCOUNT_BALANCE * RISK_PERCENT) / 100;
-      const pipSize = getPipSize(pair);
-      const microLots = riskAmount / (slPips * 0.10);
-      let score = 0;
-      score += 25; score += 20; score += 15;
-      score += Math.min(20, (rr - 1.0) * 12);
-      score += scoreBonus;
-      const winProb = Math.min(95, score);
-      let confidence = "Low";
-      if (winProb >= 70) confidence = "High";
-      else if (winProb >= 55) confidence = "Medium";
-      return { pair, direction, entry, sl, tp, slPips, tpPips, rr, winProb, confidence, microLots };
+    function buildTrade(pair, type, entry, sl, tp, slPips, tpPips, rr, score) {
+      return `${pair.toUpperCase()} | ${type.toUpperCase()} | Entry: ${entry.toFixed(5)} | SL: ${sl.toFixed(5)} | TP: ${tp.toFixed(5)} | RR: ${rr.toFixed(2)} | Volatility Score: ${score}`;
     }
 
-    async function analyzePairStrict(pair) {
-      const session = getCurrentSession();
-      if (!isPairActiveInSession(pair, session)) return [];
-      if (isHighImpactNewsWindow(pair)) return [];
-
-      const candles1h = await fetchCandles(pair, '1h');
-      const candles4h = await fetchCandles(pair, '4h');
-      if (!candles1h || !candles4h) return [];
-
-      const ema50_4h = ema(candles4h.close, 50);
-      const ema200_4h = ema(candles4h.close, 200);
-      const higherTrend = ema50_4h.at(-1) > ema200_4h.at(-1) ? 'up' : 'down';
-
-      const c = candles1h.close;
-      const h = candles1h.high;
-      const l = candles1h.low;
-      const ema50 = ema(c, 50);
-      const ema200 = ema(c, 200);
-      const rsis = rsi(c, 14);
-      const atrs = atr(h, l, c, 14);
-
-      const latestClose = c.at(-1);
-      const latestEma50 = ema50.at(-1);
-      const latestEma200 = ema200.at(-1);
-      const latestRsi = rsis.at(-1);
-      const latestAtr = atrs.at(-1);
-      const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
-
-      if (latestAtr > atrAvg * 2.2 || latestAtr < atrAvg * 0.35) return [];
-
-      const prevHigh = h.at(-2);
-      const prevLow = l.at(-2);
-      const bullishCandle = latestClose > prevHigh;
-      const bearishCandle = latestClose < prevLow;
-
-      const isUptrend = latestEma50 > latestEma200;
-      const isDowntrend = latestEma50 < latestEma200;
-      const pipSize = getPipSize(pair);
-      const trades = [];
-
-      if (isUptrend && higherTrend === 'up' && bullishCandle && latestRsi > 50) {
-        const sl = latestClose - latestAtr;
-        const tp = latestClose + latestAtr * 2;
-        const slPips = Math.abs(latestClose - sl) / pipSize;
-        const tpPips = Math.abs(tp - latestClose) / pipSize;
-        const rr = tpPips / slPips;
-        if (rr >= 1.2) trades.push(buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 10));
-      }
-
-      if (isDowntrend && higherTrend === 'down' && bearishCandle && latestRsi < 50) {
-        const sl = latestClose + latestAtr;
-        const tp = latestClose - latestAtr * 2;
-        const slPips = Math.abs(sl - latestClose) / pipSize;
-        const tpPips = Math.abs(latestClose - tp) / pipSize;
-        const rr = tpPips / slPips;
-        if (rr >= 1.2) trades.push(buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 10));
-      }
-
-      if (isUptrend && higherTrend === 'up' && latestRsi > 55 && latestRsi < 70) {
-        const sl = latestEma50;
-        const tp = latestClose + latestAtr * 1.8;
-        const slPips = Math.abs(latestClose - sl) / pipSize;
-        const tpPips = Math.abs(tp - latestClose) / pipSize;
-        const rr = tpPips / slPips;
-        if (rr >= 1.2) trades.push(buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 0));
-      }
-
-      if (isDowntrend && higherTrend === 'down' && latestRsi < 45 && latestRsi > 30) {
-        const sl = latestEma50;
-        const tp = latestClose - latestAtr * 1.8;
-        const slPips = Math.abs(sl - latestClose) / pipSize;
-        const tpPips = Math.abs(latestClose - tp) / pipSize;
-        const rr = tpPips / slPips;
-        if (rr >= 1.2) trades.push(buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 0));
-      }
-
-      return trades;
+    // ====== MOCK CANDLE FETCHER (replace with API later) ======
+    async function fetchCandles(pair, timeframe) {
+      const len = 300;
+      const close = Array.from({length: len}, (_, i) => 1.05 + Math.sin(i/10)/50 + Math.random()/100);
+      const high = close.map(v => v + Math.random()/200);
+      const low = close.map(v => v - Math.random()/200);
+      return { close, high, low };
     }
 
+    // ====== FILTER FUNCTIONS ======
+    function isPairActiveInSession(pair, session) {
+      if (session === 'Asian') return pair.includes('JPY') || pair.includes('AUD') || pair.includes('NZD');
+      return true;
+    }
+
+    function isHighImpactNewsWindow(pair) {
+      return false; // temporarily disabled
+    }
+
+    // ====== MAIN ANALYZER ======
     async function analyzePairRelaxed(pair) {
       const session = getCurrentSession();
       if (!isPairActiveInSession(pair, session)) return [];
@@ -259,7 +159,8 @@
 
       const ema50_4h = ema(candles4h.close, 50);
       const ema200_4h = ema(candles4h.close, 200);
-      const higherTrend = ema50_4h.at(-1) > ema200_4h.at(-1) ? 'up' : 'down';
+      const len = Math.min(ema50_4h.length, ema200_4h.length);
+      const higherTrend = ema50_4h.slice(-len)[len-1] > ema200_4h.slice(-len)[len-1] ? 'up' : 'down';
 
       const c = candles1h.close;
       const h = candles1h.high;
@@ -276,124 +177,109 @@
       const latestAtr = atrs.at(-1);
       const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
 
-      if (latestAtr > atrAvg * 2.5 || latestAtr < atrAvg * 0.25) return [];
+      if (latestAtr > atrAvg * 3.0 || latestAtr < atrAvg * 0.2) return [];
 
       const isUptrend = latestEma50 > latestEma200;
       const isDowntrend = latestEma50 < latestEma200;
       const pipSize = getPipSize(pair);
       const trades = [];
 
-      if (isUptrend && higherTrend === 'up' && latestRsi > 48 && latestRsi < 75) {
+      if (isUptrend && higherTrend === 'up' && latestRsi > 45 && latestRsi < 75) {
         const sl = latestClose - latestAtr * 1.1;
         const tp = latestClose + latestAtr * 1.6;
         const slPips = Math.abs(latestClose - sl) / pipSize;
         const tpPips = Math.abs(tp - latestClose) / pipSize;
         const rr = tpPips / slPips;
-        if (rr >= 1.15) {
-          const trade = buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 0);
-          if (trade.winProb > 60) trades.push({ ...trade, relaxed: true });
-        }
+        if (rr >= 1.1) trades.push(buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 10));
       }
 
-      if (isDowntrend && higherTrend === 'down' && latestRsi < 52 && latestRsi > 25) {
+      if (isDowntrend && higherTrend === 'down' && latestRsi < 55 && latestRsi > 25) {
         const sl = latestClose + latestAtr * 1.1;
         const tp = latestClose - latestAtr * 1.6;
         const slPips = Math.abs(sl - latestClose) / pipSize;
         const tpPips = Math.abs(latestClose - tp) / pipSize;
         const rr = tpPips / slPips;
-        if (rr >= 1.15) {
-          const trade = buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 0);
-          if (trade.winProb > 60) trades.push({ ...trade, relaxed: true });
-        }
+        if (rr >= 1.1) trades.push(buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 10));
       }
 
       return trades;
     }
 
+    // ====== RUN ANALYSIS ACROSS PAIRS ======
     async function generateDailySignals() {
-      const session = getCurrentSession();
-      document.getElementById('sessionLabel').textContent = session;
-      document.getElementById('status').textContent = `🔍 Analyzing ${PAIRS.length} pairs (1H + 4H) • Session: ${session}`;
+      const pairs = ['EUR/USD','GBP/USD','USD/JPY','AUD/USD','XAU/USD'];
+      const allSignals = [];
 
-      let strictTrades = [];
-      let relaxedTrades = [];
-      let apiKeyValid = true;
-
-      for (const pair of PAIRS) {
-        try {
-          const trades = await analyzePairStrict(pair);
-          strictTrades = strictTrades.concat(trades);
-        } catch (e) {
-          if (e.message === "INVALID_API_KEY") {
-            apiKeyValid = false;
-            break;
-          }
-        }
-        await new Promise(r => setTimeout(r, 1000)); // 1-second delay
+      for (const pair of pairs) {
+        if (isHighImpactNewsWindow(pair)) continue;
+        const trades = await analyzePairRelaxed(pair);
+        allSignals.push(...trades);
       }
 
-      if (!apiKeyValid) {
-        document.getElementById('status').textContent = '❌ Invalid or Blocked API Key!';
-        document.getElementById('tradesContainer').innerHTML = `
-          <div class="api-error">
-            <b>API Key Issue</b><br>
-            Your key is invalid or temporarily blocked.<br>
-            🔹 Wait 5–10 minutes, then refresh.<br>
-            🔹 Or get a new free key at <a href="https://twelvedata.com/" target="_blank">twelvedata.com</a>
-          </div>
-        `;
-        return;
-      }
-
-      for (const pair of PAIRS) {
-        try {
-          const trades = await analyzePairRelaxed(pair);
-          relaxedTrades = relaxedTrades.concat(trades);
-        } catch (e) {
-          // ignore
-        }
-        await new Promise(r => setTimeout(r, 1000));
-      }
-
-      let allTrades = [...strictTrades];
-      const needed = Math.max(0, 3 - strictTrades.length);
-      if (needed > 0) {
-        relaxedTrades.sort((a, b) => b.winProb - a.winProb);
-        allTrades = allTrades.concat(relaxedTrades.slice(0, needed));
-      }
-
-      allTrades.sort((a, b) => b.winProb - a.winProb);
-      allTrades = allTrades.slice(0, 3);
-
-      const container = document.getElementById('tradesContainer');
-      if (allTrades.length === 0) {
-        container.innerHTML = '<div class="error">🚫 No valid setups found. Market conditions extremely unfavorable.</div>';
-        document.getElementById('status').textContent = '✅ Analysis complete – no signals';
-        return;
-      }
-
-      let html = `<p>🎯 <b>${allTrades.length} Trade Opportunities</b> (R1000 • 1% Risk)</p>`;
-      allTrades.forEach((t, i) => {
-        const dir = t.direction === 'buy' ? '🟢 BUY' : '🔴 SELL';
-        const decimals = t.pair.includes('JPY') ? 3 : t.pair.includes('XAU') ? 2 : 5;
-        const confColor = t.confidence === "High" ? "#27ae60" : t.confidence === "Medium" ? "#f1c40f" : "#e67e22";
-        html += `
-          <div class="trade-card" style="border-left-color:${confColor}">
-            <b>#${i+1} • ${t.pair} • ${dir}</b>
-            <span style="background:${confColor};color:white;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:6px;">
-              ${t.confidence} Confidence
-            </span>
-            ${t.relaxed ? '<span style="background:#9b59b6;color:white;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:6px;">Relaxed</span>' : ''}
-            <div>Entry: ${t.entry.toFixed(decimals)} | SL: ${t.sl.toFixed(decimals)} (${t.slPips.toFixed(1)}p) | TP: ${t.tp.toFixed(decimals)} (${t.tpPips.toFixed(1)}p)</div>
-            <div>R:R = 1:${t.rr.toFixed(2)} | Win Prob: ${t.winProb}% | Size: ${t.microLots.toFixed(1)} micro lots</div>
-          </div>
-        `;
-      });
-      container.innerHTML = html;
-      document.getElementById('status').textContent = `✅ ${allTrades.length} opportunity${allTrades.length !== 1 ? 's' : ''} ready`;
+      return allSignals;
     }
 
-    generateDailySignals();
+    // ====== AUTO REFRESH + STORAGE ======
+    const REFRESH_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
+
+    function saveSignalsToStorage(signals) {
+      localStorage.setItem('dailySignals', JSON.stringify({
+        timestamp: new Date().toISOString(),
+        signals
+      }));
+    }
+
+    function loadSignalsFromStorage() {
+      const data = localStorage.getItem('dailySignals');
+      if (!data) return null;
+      try {
+        return JSON.parse(data);
+      } catch {
+        return null;
+      }
+    }
+
+    function showLastSignals() {
+      const saved = loadSignalsFromStorage();
+      const display = document.getElementById('signalOutput');
+      const timeDisplay = document.getElementById('lastUpdated');
+
+      if (!display || !saved) return;
+      const { signals, timestamp } = saved;
+      const time = new Date(timestamp).toLocaleString();
+
+      display.innerHTML = signals.length
+        ? signals.map(s => `<div class="signal">${s}</div>`).join('')
+        : "<p>No saved signals yet.</p>";
+
+      if (timeDisplay) timeDisplay.textContent = `Last updated: ${time}`;
+    }
+
+    async function refreshSignals() {
+      const output = document.getElementById('signalOutput');
+      const timeDisplay = document.getElementById('lastUpdated');
+
+      if (output) output.innerHTML = "<p>⏳ Refreshing signals...</p>";
+      const signals = await generateDailySignals();
+
+      saveSignalsToStorage(signals);
+
+      if (output) output.innerHTML = signals.length
+        ? signals.map(s => `<div class="signal">${s}</div>`).join('')
+        : "<p>No signals found.</p>";
+
+      if (timeDisplay)
+        timeDisplay.textContent = `Last updated: ${new Date().toLocaleString()}`;
+    }
+
+    function startAutoRefresh() {
+      showLastSignals();
+      refreshSignals();
+      setInterval(refreshSignals, REFRESH_INTERVAL);
+    }
+
+    // Run it once page loads
+    window.addEventListener('load', startAutoRefresh);
   </script>
 </body>
 </html>
