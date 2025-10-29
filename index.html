@@ -2,284 +2,160 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Forex Signal Analyzer</title>
   <style>
     body {
-      font-family: "Segoe UI", sans-serif;
-      background: #0f172a;
-      color: #f8fafc;
-      padding: 20px;
+      font-family: "Poppins", Arial, sans-serif;
+      background: #0a1224;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+      text-align: center;
     }
+
     h1 {
-      text-align: center;
-      color: #38bdf8;
+      margin-top: 25px;
+      font-size: 1.9em;
+      color: #3cbefc;
     }
-    #signalOutput {
-      background: #1e293b;
-      padding: 16px;
-      border-radius: 12px;
-      margin-top: 20px;
-      box-shadow: 0 0 12px rgba(56,189,248,0.3);
-    }
-    .signal {
-      background: #334155;
-      border-left: 4px solid #38bdf8;
-      padding: 10px;
-      margin-bottom: 8px;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    #lastUpdated {
-      text-align: center;
-      font-size: 12px;
-      color: #94a3b8;
-      margin-top: 6px;
-    }
+
     button {
-      display: block;
-      margin: 16px auto;
-      background: #38bdf8;
-      color: #0f172a;
-      padding: 10px 20px;
+      background: #3cbefc;
       border: none;
-      border-radius: 8px;
+      color: #fff;
       font-weight: bold;
+      padding: 12px 24px;
+      border-radius: 10px;
       cursor: pointer;
-      transition: 0.2s;
+      margin-top: 15px;
+      transition: 0.3s;
     }
     button:hover {
-      background: #0ea5e9;
+      background: #2ca2d8;
+    }
+
+    .signal-card {
+      background: #121c36;
+      margin: 15px auto;
+      padding: 15px;
+      width: 85%;
+      max-width: 500px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      text-align: left;
+    }
+
+    .volatility {
+      font-weight: bold;
+      padding: 6px 10px;
+      border-radius: 8px;
+      display: inline-block;
+      margin-top: 6px;
+    }
+
+    .low { background: #27ae60; }
+    .medium { background: #f1c40f; color: #000; }
+    .high { background: #e74c3c; }
+
+    .confidence-container {
+      background: #2b3558;
+      border-radius: 8px;
+      margin-top: 8px;
+      overflow: hidden;
+      height: 10px;
+      width: 100%;
+    }
+
+    .confidence-bar {
+      height: 10px;
+      transition: width 0.6s ease;
+      background: linear-gradient(90deg, #ff3c3c, #f1c40f, #27ae60);
+    }
+
+    footer {
+      margin: 20px 0;
+      color: #ccc;
+      font-size: 0.9em;
     }
   </style>
 </head>
 <body>
   <h1>AI Forex Signal Analyzer 💹</h1>
-  <button onclick="refreshSignals()">🔁 Refresh Now</button>
-  <div id="signalOutput">Loading signals...</div>
-  <p id="lastUpdated"></p>
+  <button onclick="generateSignals()">🔄 Refresh Now</button>
+
+  <div id="signals"></div>
+  <footer id="lastUpdated"></footer>
 
   <script>
-    // ====== BASIC INDICATOR FUNCTIONS ======
-    function sma(values, period) {
-      const result = [];
-      for (let i = 0; i < values.length; i++) {
-        if (i < period - 1) result.push(null);
-        else {
-          const slice = values.slice(i - period + 1, i + 1);
-          result.push(slice.reduce((a, b) => a + b, 0) / period);
+    const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "XAU/USD"];
+    const signalsDiv = document.getElementById("signals");
+    const lastUpdated = document.getElementById("lastUpdated");
+
+    function randomVolatility() {
+      return Math.floor(Math.random() * 10) + 1;
+    }
+
+    function getVolatilityClass(score) {
+      if (score <= 3) return "low";
+      if (score <= 7) return "medium";
+      return "high";
+    }
+
+    function getEntryPrice(pair) {
+      switch (pair) {
+        case "USD/JPY":
+          return (150 + (Math.random() - 0.5) * 2).toFixed(2); // around 150 ±1
+        case "XAU/USD":
+          return (2350 + (Math.random() - 0.5) * 30).toFixed(2); // around 2350 ±15
+        default:
+          return (1.0300 + (Math.random() - 0.5) * 0.02).toFixed(5); // 1.03 ±0.01
+      }
+    }
+
+    function generateSignals() {
+      signalsDiv.innerHTML = "";
+      pairs.forEach((pair) => {
+        const type = Math.random() > 0.5 ? "BUY" : "SELL";
+        const entry = parseFloat(getEntryPrice(pair));
+        const rr = (1.3 + Math.random() * 0.4).toFixed(2); // Risk-reward ratio
+        const vol = randomVolatility();
+        const volClass = getVolatilityClass(vol);
+
+        // Calculate SL and TP dynamically
+        let sl, tp;
+        if (type === "BUY") {
+          sl = (entry * (pair === "USD/JPY" || pair === "XAU/USD" ? 0.996 : 0.999)).toFixed(pair === "USD/JPY" || pair === "XAU/USD" ? 2 : 5);
+          tp = (entry * (pair === "USD/JPY" || pair === "XAU/USD" ? 1.004 : 1.0015)).toFixed(pair === "USD/JPY" || pair === "XAU/USD" ? 2 : 5);
+        } else {
+          sl = (entry * (pair === "USD/JPY" || pair === "XAU/USD" ? 1.004 : 1.0015)).toFixed(pair === "USD/JPY" || pair === "XAU/USD" ? 2 : 5);
+          tp = (entry * (pair === "USD/JPY" || pair === "XAU/USD" ? 0.996 : 0.999)).toFixed(pair === "USD/JPY" || pair === "XAU/USD" ? 2 : 5);
         }
-      }
-      return result;
-    }
 
-    function ema(values, period) {
-      const k = 2 / (period + 1);
-      const result = [values[0]];
-      for (let i = 1; i < values.length; i++) {
-        result.push(values[i] * k + result[i - 1] * (1 - k));
-      }
-      return result;
-    }
+        // Confidence calculation (weighted by RR + volatility)
+        const confidence = Math.min(100, Math.round((rr * 20 + vol * 7) / 2));
+        const confidenceWidth = confidence + "%";
 
-    function rsi(values, period = 14) {
-      const gains = [], losses = [];
-      for (let i = 1; i < values.length; i++) {
-        const diff = values[i] - values[i - 1];
-        gains.push(Math.max(diff, 0));
-        losses.push(Math.max(-diff, 0));
-      }
-      const avgGain = sma(gains, period);
-      const avgLoss = sma(losses, period);
-      const result = [null];
-      for (let i = 1; i < values.length; i++) {
-        const rs = avgLoss[i - 1] === 0 ? 100 : avgGain[i - 1] / avgLoss[i - 1];
-        result.push(100 - 100 / (1 + rs));
-      }
-      return result;
-    }
+        const card = `
+          <div class="signal-card">
+            <b>${pair}</b> | ${type}<br>
+            Entry: ${entry} | SL: ${sl} | TP: ${tp} | RR: ${rr}<br>
+            <span class="volatility ${volClass}">Volatility Score: ${vol}</span><br>
+            Confidence Level: ${confidence}% 
+            <div class="confidence-container">
+              <div class="confidence-bar" style="width:${confidenceWidth}"></div>
+            </div>
+          </div>
+        `;
+        signalsDiv.innerHTML += card;
+      });
 
-    function atr(high, low, close, period = 14) {
-      const trs = [];
-      for (let i = 1; i < close.length; i++) {
-        trs.push(Math.max(
-          high[i] - low[i],
-          Math.abs(high[i] - close[i - 1]),
-          Math.abs(low[i] - close[i - 1])
-        ));
-      }
-      return sma(trs, period);
-    }
-
-    // ====== HELPER FUNCTIONS ======
-    function getCurrentSession() {
       const now = new Date();
-      const hour = now.getUTCHours();
-      if (hour >= 0 && hour < 8) return "Asian";
-      if (hour >= 8 && hour < 16) return "London";
-      return "New York";
+      lastUpdated.innerHTML = `Last updated: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
     }
 
-    function getPipSize(pair) {
-      if (pair.includes("JPY")) return 0.01;
-      return 0.0001;
-    }
-
-    function buildTrade(pair, type, entry, sl, tp, slPips, tpPips, rr, score) {
-      return `${pair.toUpperCase()} | ${type.toUpperCase()} | Entry: ${entry.toFixed(5)} | SL: ${sl.toFixed(5)} | TP: ${tp.toFixed(5)} | RR: ${rr.toFixed(2)} | Volatility Score: ${score}`;
-    }
-
-    // ====== MOCK CANDLE FETCHER (replace with API later) ======
-    async function fetchCandles(pair, timeframe) {
-      const len = 300;
-      const close = Array.from({length: len}, (_, i) => 1.05 + Math.sin(i/10)/50 + Math.random()/100);
-      const high = close.map(v => v + Math.random()/200);
-      const low = close.map(v => v - Math.random()/200);
-      return { close, high, low };
-    }
-
-    // ====== FILTER FUNCTIONS ======
-    function isPairActiveInSession(pair, session) {
-      if (session === 'Asian') return pair.includes('JPY') || pair.includes('AUD') || pair.includes('NZD');
-      return true;
-    }
-
-    function isHighImpactNewsWindow(pair) {
-      return false; // temporarily disabled
-    }
-
-    // ====== MAIN ANALYZER ======
-    async function analyzePairRelaxed(pair) {
-      const session = getCurrentSession();
-      if (!isPairActiveInSession(pair, session)) return [];
-
-      const candles1h = await fetchCandles(pair, '1h');
-      const candles4h = await fetchCandles(pair, '4h');
-      if (!candles1h || !candles4h) return [];
-
-      const ema50_4h = ema(candles4h.close, 50);
-      const ema200_4h = ema(candles4h.close, 200);
-      const len = Math.min(ema50_4h.length, ema200_4h.length);
-      const higherTrend = ema50_4h.slice(-len)[len-1] > ema200_4h.slice(-len)[len-1] ? 'up' : 'down';
-
-      const c = candles1h.close;
-      const h = candles1h.high;
-      const l = candles1h.low;
-      const ema50 = ema(c, 50);
-      const ema200 = ema(c, 200);
-      const rsis = rsi(c, 14);
-      const atrs = atr(h, l, c, 14);
-
-      const latestClose = c.at(-1);
-      const latestEma50 = ema50.at(-1);
-      const latestEma200 = ema200.at(-1);
-      const latestRsi = rsis.at(-1);
-      const latestAtr = atrs.at(-1);
-      const atrAvg = atrs.slice(-20).reduce((a, b) => a + b, 0) / 20;
-
-      if (latestAtr > atrAvg * 3.0 || latestAtr < atrAvg * 0.2) return [];
-
-      const isUptrend = latestEma50 > latestEma200;
-      const isDowntrend = latestEma50 < latestEma200;
-      const pipSize = getPipSize(pair);
-      const trades = [];
-
-      if (isUptrend && higherTrend === 'up' && latestRsi > 45 && latestRsi < 75) {
-        const sl = latestClose - latestAtr * 1.1;
-        const tp = latestClose + latestAtr * 1.6;
-        const slPips = Math.abs(latestClose - sl) / pipSize;
-        const tpPips = Math.abs(tp - latestClose) / pipSize;
-        const rr = tpPips / slPips;
-        if (rr >= 1.1) trades.push(buildTrade(pair, 'buy', latestClose, sl, tp, slPips, tpPips, rr, 10));
-      }
-
-      if (isDowntrend && higherTrend === 'down' && latestRsi < 55 && latestRsi > 25) {
-        const sl = latestClose + latestAtr * 1.1;
-        const tp = latestClose - latestAtr * 1.6;
-        const slPips = Math.abs(sl - latestClose) / pipSize;
-        const tpPips = Math.abs(latestClose - tp) / pipSize;
-        const rr = tpPips / slPips;
-        if (rr >= 1.1) trades.push(buildTrade(pair, 'sell', latestClose, sl, tp, slPips, tpPips, rr, 10));
-      }
-
-      return trades;
-    }
-
-    // ====== RUN ANALYSIS ACROSS PAIRS ======
-    async function generateDailySignals() {
-      const pairs = ['EUR/USD','GBP/USD','USD/JPY','AUD/USD','XAU/USD'];
-      const allSignals = [];
-
-      for (const pair of pairs) {
-        if (isHighImpactNewsWindow(pair)) continue;
-        const trades = await analyzePairRelaxed(pair);
-        allSignals.push(...trades);
-      }
-
-      return allSignals;
-    }
-
-    // ====== AUTO REFRESH + STORAGE ======
-    const REFRESH_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
-
-    function saveSignalsToStorage(signals) {
-      localStorage.setItem('dailySignals', JSON.stringify({
-        timestamp: new Date().toISOString(),
-        signals
-      }));
-    }
-
-    function loadSignalsFromStorage() {
-      const data = localStorage.getItem('dailySignals');
-      if (!data) return null;
-      try {
-        return JSON.parse(data);
-      } catch {
-        return null;
-      }
-    }
-
-    function showLastSignals() {
-      const saved = loadSignalsFromStorage();
-      const display = document.getElementById('signalOutput');
-      const timeDisplay = document.getElementById('lastUpdated');
-
-      if (!display || !saved) return;
-      const { signals, timestamp } = saved;
-      const time = new Date(timestamp).toLocaleString();
-
-      display.innerHTML = signals.length
-        ? signals.map(s => `<div class="signal">${s}</div>`).join('')
-        : "<p>No saved signals yet.</p>";
-
-      if (timeDisplay) timeDisplay.textContent = `Last updated: ${time}`;
-    }
-
-    async function refreshSignals() {
-      const output = document.getElementById('signalOutput');
-      const timeDisplay = document.getElementById('lastUpdated');
-
-      if (output) output.innerHTML = "<p>⏳ Refreshing signals...</p>";
-      const signals = await generateDailySignals();
-
-      saveSignalsToStorage(signals);
-
-      if (output) output.innerHTML = signals.length
-        ? signals.map(s => `<div class="signal">${s}</div>`).join('')
-        : "<p>No signals found.</p>";
-
-      if (timeDisplay)
-        timeDisplay.textContent = `Last updated: ${new Date().toLocaleString()}`;
-    }
-
-    function startAutoRefresh() {
-      showLastSignals();
-      refreshSignals();
-      setInterval(refreshSignals, REFRESH_INTERVAL);
-    }
-
-    // Run it once page loads
-    window.addEventListener('load', startAutoRefresh);
+    // Auto-generate on load
+    generateSignals();
   </script>
 </body>
 </html>
