@@ -4,7 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Forex Signal Analyzer</title>
-  <style>body {
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>AI Forex Signal Analyzer 💹</h1>
+  <button onclick="generateSignals()">🔄 Refresh Now</button>
+  <div id="loading" style="display:none;">Fetching simulated data...</div>
+  <div id="signals"></div>
+  <footer id="lastUpdated"></footer>
+</body>
+</html>body {
   font-family: "Poppins", Arial, sans-serif;
   background: #0a1224;
   color: #fff;
@@ -51,7 +60,7 @@ button:hover {
 .low { background: #27ae60; }
 .medium { background: #f1c40f; color: #000; }
 .high { background: #e74c3c; }
-.confidence-container {
+.conf-bar {
   background: #2b3558;
   border-radius: 8px;
   margin-top: 8px;
@@ -59,7 +68,7 @@ button:hover {
   height: 10px;
   width: 100%;
 }
-.confidence-bar {
+.conf-fill {
   height: 10px;
   transition: width 0.6s ease;
   background: linear-gradient(90deg, #ff3c3c, #f1c40f, #27ae60);
@@ -86,113 +95,106 @@ footer {
 }
 .trade-btn.failed {
   background: #e74c3c;
-}
-  </style>
-</head>
-<body>
-  <h1>AI Forex Signal Analyzer 💹</h1>
-  <button onclick="generateSignals()">🔄 Refresh Now</button>
-  <div id="loading" style="display:none;">Fetching simulated data...</div>
-  <div id="signals"></div>
-  <footer id="lastUpdated"></footer><script>
+}<script>
+// ------------------ Pairs & Containers ------------------
 const pairs = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CHF", "USD/CAD", "NZD/USD", "XAU/USD"];
 const signalsDiv = document.getElementById("signals");
 const lastUpdated = document.getElementById("lastUpdated");
 const loadingDiv = document.getElementById("loading");
 
-// Simulate pseudo-historical reference prices
+// ------------------ Settings ------------------
+const settings = { rrTarget: 2.0, slMultiplier: 1.0 };
+
+// ------------------ Helper Functions ------------------
 const basePrices = {
-  "EUR/USD": 1.0850,
-  "GBP/USD": 1.2650,
-  "USD/JPY": 149.85,
-  "AUD/USD": 0.6550,
-  "USD/CHF": 0.9050,
-  "USD/CAD": 1.3670,
-  "NZD/USD": 0.6050,
-  "XAU/USD": 2780.00
+  "EUR/USD": 1.0850, "GBP/USD": 1.2650, "USD/JPY": 149.85,
+  "AUD/USD": 0.6550, "USD/CHF": 0.9050, "USD/CAD": 1.3670,
+  "NZD/USD": 0.6050, "XAU/USD": 2780.00
 };
 
-function randomVolatility() {
-  return Math.floor(Math.random() * 10) + 1;
-}
-function getVolClass(score) {
-  if (score <= 3) return "low";
-  if (score <= 7) return "medium";
-  return "high";
-}
-
-// Realistic volatility-based deviation
-function getLiveSimPrice(pair) {
+function getSimPrice(pair) {
   const base = basePrices[pair];
-  const spread = (pair === "XAU/USD") ? 0.3 : (pair.includes("JPY") ? 0.05 : 0.0005);
-  const volatility = Math.random() * (pair.includes("JPY") ? 0.15 : 0.0015);
-  const direction = Math.random() > 0.5 ? 1 : -1;
-  const simulated = base + direction * volatility + spread;
-  const decimals = (pair.includes("JPY") || pair === "XAU/USD") ? 2 : 5;
-  return simulated.toFixed(decimals);
+  const spread = pair === "XAU/USD" ? 0.3 : pair.includes("JPY") ? 0.05 : 0.0005;
+  const vol = Math.random() * (pair.includes("JPY") ? 0.15 : 0.0015);
+  const dir = Math.random() > 0.5 ? 1 : -1;
+  const decimals = (pair.includes("JPY") || pair==="XAU/USD") ? 2 : 5;
+  return (base + dir * vol + spread).toFixed(decimals);
 }
 
-function pipSizeFor(pair) {
-  return pair === "XAU/USD" ? 0.01 : pair.includes("JPY") ? 0.01 : 0.0001;
+function pipSize(pair) { return pair==="XAU/USD" ? 0.01 : pair.includes("JPY") ? 0.01 : 0.0001; }
+function formatPrice(price, pair) { return parseFloat(price).toFixed(pair.includes("JPY") || pair==="XAU/USD" ? 2 : 5); }
+function spreadBuffer(pair) { return pipSize(pair); }
+function computeEMA(prices, period) {
+  const k = 2/(period+1); const ema=[]; prices.forEach((p,i)=>{ ema.push(i? p*k + ema[i-1]*(1-k) : p); }); return ema;
+}
+function recentStructure(hist, lookback=12) {
+  return { resistance: Math.max(...hist.high.slice(-lookback)), support: Math.min(...hist.low.slice(-lookback)) };
+}
+function calcLot(slPips){ return (slPips/10*0.01).toFixed(2); }
+function volClass(score){ return score<=3?"low":score<=7?"medium":"high"; }
+
+// ------------------ Build Signal Card ------------------
+function buildSignalCard(pair,hist) {
+  const entry = hist.close[hist.close.length-1];
+  const struct = recentStructure(hist);
+  const ema50 = computeEMA(hist.close,50), ema200 = computeEMA(hist.close,200);
+  const type = (ema50.at(-1) > ema200.at(-1)) ? "BUY" : "SELL";
+
+  // ATR approximation
+  const lookATR = 14;
+  let atr=0;
+  if(hist.high.length>lookATR){
+    atr = hist.close.slice(-lookATR).reduce((sum,_,i)=> {
+      const hi=hist.high[hist.high.length-lookATR+i], lo=hist.low[hist.low.length-lookATR+i], prev=hist.close[hist.close.length-lookATR+i-1]||hi;
+      return sum + Math.max(Math.abs(hi-lo), Math.abs(hi-prev), Math.abs(lo-prev));
+    },0)/lookATR;
+  } else { atr = Math.abs(struct.resistance-struct.support)/Math.max(1,hist.close.length/20); }
+
+  const psize = pipSize(pair);
+  const structPips = Math.round((type==="BUY"? entry-struct.support : struct.resistance-entry)/psize);
+  let minSL = pair==="XAU/USD"?80:pair.includes("JPY")?5:8;
+  let maxSL = pair==="XAU/USD"?150:pair.includes("JPY")?40:30;
+  let slPips = structPips>0 && structPips<=maxSL ? structPips : Math.round(Math.max(minSL, Math.min(maxSL, Math.round(atr/psize*1.5))));
+  slPips = Math.max(minSL, Math.min(maxSL, Math.round(slPips*settings.slMultiplier)));
+
+  const slPrice = type==="BUY"? entry-(slPips*psize+spreadBuffer(pair)) : entry+(slPips*psize+spreadBuffer(pair));
+  const tpPrice = type==="BUY"? entry+slPips*psize*settings.rrTarget : entry-slPips*psize*settings.rrTarget;
+
+  const recentRange = struct.resistance-struct.support;
+  const volScore = Math.min(10, Math.max(1, Math.round(recentRange/entry*1000*(pair==="XAU/USD"?0.8:1))));
+  const conf = Math.min(100, Math.round((settings.rrTarget*25 + volScore*6)/2.2));
+
+  return `
+    <div class="signal-card" id="card-${pair.replace("/","-")}">
+      <div>${pair} <span style="color:${type==="BUY"?"#27ae60":"#e74c3c"}">${type}</span></div>
+      Entry: ${formatPrice(entry,pair)} | SL: ${formatPrice(slPrice,pair)} | TP: ${formatPrice(tpPrice,pair)}<br>
+      Lot: ${calcLot(slPips)} | Vol: <span class="${volClass(volScore)}">${volScore}</span> | Conf: ${conf}%
+      <div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div>
+      <button class="trade-btn" onclick="markTaken(this)">✅ Taken</button>
+      <button class="trade-btn failed" onclick="markFailed(this)">❌ Failed</button>
+    </div>
+  `;
 }
 
-async function generateSignals() {
-  signalsDiv.innerHTML = "";
-  loadingDiv.style.display = "block";
-  lastUpdated.innerHTML = "";
-
-  const cards = await Promise.all(pairs.map(async (pair) => {
-    const type = Math.random() > 0.5 ? "BUY" : "SELL";
-    const entry = parseFloat(getLiveSimPrice(pair));
-    const pipSize = pipSizeFor(pair);
-
-    const slPips = Math.floor(20 + Math.random() * 25);
-    const tpPips = slPips * 2; // 1:2 ratio
-
-    const sl = type === "BUY" ? entry - slPips * pipSize : entry + slPips * pipSize;
-    const tp = type === "BUY" ? entry + tpPips * pipSize : entry - tpPips * pipSize;
-
-    const vol = randomVolatility();
-    const conf = Math.min(100, Math.round(50 + vol * 5));
-    const volClass = getVolClass(vol);
-    const decimals = (pair.includes("JPY") || pair === "XAU/USD") ? 2 : 5;
-
-    return `
-      <div class="signal-card">
-        <b>${pair}</b> | <span style="color:${type==='BUY'?'#27ae60':'#e74c3c'}">${type}</span><br>
-        Entry: ${entry.toFixed(decimals)} | SL: ${sl.toFixed(decimals)} | TP: ${tp.toFixed(decimals)}<br>
-        RR: 1:2 | Spread buffer included<br>
-        <span class="volatility ${volClass}">Volatility Score: ${vol}</span><br>
-        Confidence: ${conf}%
-        <div class="confidence-container">
-          <div class="confidence-bar" style="width:${conf}%"></div>
-        </div>
-        <button class="trade-btn" onclick="markTrade(this, true)">✅ Taken</button>
-        <button class="trade-btn failed" onclick="markTrade(this, false)">❌ Failed</button>
-      </div>
-    `;
-  }));
-
+// ------------------ Generate All Signals ------------------
+async function generateSignals(){
+  signalsDiv.innerHTML=""; loadingDiv.style.display="block"; lastUpdated.innerHTML="";
+  const cards = pairs.map(pair=>{
+    const hist = { close:Array.from({length:50},()=>parseFloat(getSimPrice(pair))),
+                   high:Array.from({length:50},()=>parseFloat(getSimPrice(pair))+Math.random()*0.001),
+                   low:Array.from({length:50},()=>parseFloat(getSimPrice(pair))-Math.random()*0.001)};
+    return buildSignalCard(pair,hist);
+  });
   signalsDiv.innerHTML = cards.join('');
-  loadingDiv.style.display = "none";
+  loadingDiv.style.display="none";
   lastUpdated.innerHTML = `Last updated: ${new Date().toLocaleTimeString()}`;
 }
 
-function markTrade(button, success) {
-  const card = button.closest(".signal-card");
-  card.style.border = success ? "2px solid #27ae60" : "2px solid #e74c3c";
-  button.textContent = success ? "✅ Logged" : "❌ Recorded";
-  button.disabled = true;
-}
+// ------------------ Trade Button Actions ------------------
+function markTaken(btn){ btn.closest(".signal-card").style.border="2px solid #27ae60"; btn.disabled=true; }
+function markFailed(btn){ btn.closest(".signal-card").style.border="2px solid #e74c3c"; btn.disabled=true; }
 
-// Periodic parameter review (auto refresh every 10 min)
-setInterval(() => {
-  console.log("🔁 Parameter review: auto-refreshing signals...");
-  generateSignals();
-}, 600000);
-
-// Auto generate on load
-generateSignals();
-</script>
-</body>
-</html>
+// ------------------ Auto-refresh ------------------
+setInterval(()=>generateSignals(), 600000);
+window.onload = generateSignals;
+                  </script>
