@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Forex Signal Analyzer — Live Ready + AI Trend Predictor</title>
+  <title>AI Forex Signal Analyzer — Live Ready + AI + Candlesticks</title>
   <style>
     body {
       font-family: "Poppins", Arial, sans-serif;
@@ -37,7 +37,7 @@
       margin: 15px auto;
       padding: 15px;
       width: 85%;
-      max-width: 520px;
+      max-width: 540px;
       border-radius: 12px;
       box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
       text-align: left;
@@ -56,6 +56,15 @@
     .low { background: #27ae60; }
     .medium { background: #f1c40f; color: #000; }
     .high { background: #e74c3c; }
+    .pattern {
+      background: #9b59b6;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.9em;
+      margin-top: 4px;
+      display: inline-block;
+    }
     .confidence-container {
       background: #2b3558;
       border-radius: 8px;
@@ -82,7 +91,7 @@
   </style>
 </head>
 <body>
-  <h1>AI Forex Signal Analyzer — Live Ready + AI Trend Predictor 💡📈</h1>
+  <h1>AI Forex Signal Analyzer — Live Ready + AI + Candlesticks 🕯️</h1>
   <button onclick="generateSignals()">🔄 Refresh Signals</button>
   <div id="loading" style="display:none;">Analyzing market conditions...</div>
   <div id="signals"></div>
@@ -122,13 +131,53 @@
       return parseFloat(price).toFixed(decimals);
     }
 
+    // 🔥 CANDLESTICK PATTERN DETECTION
+    function detectCandlestickSignal(candles) {
+      if (candles.length < 2) return null;
+
+      const curr = candles[0];   // Most recent candle
+      const prev = candles[1];   // Previous candle
+
+      const currBody = Math.abs(curr.close - curr.open);
+      const currWickTop = curr.high - Math.max(curr.open, curr.close);
+      const currWickBottom = Math.min(curr.open, curr.close) - curr.low;
+
+      // Bullish Engulfing
+      if (curr.close > curr.open && 
+          prev.close < prev.open && 
+          curr.open < prev.close && 
+          curr.close > prev.open) {
+        return "bullish_engulfing";
+      }
+
+      // Bearish Engulfing
+      if (curr.close < curr.open && 
+          prev.close > prev.open && 
+          curr.open > prev.close && 
+          curr.close < prev.open) {
+        return "bearish_engulfing";
+      }
+
+      // Bullish Pin Bar (rejection of lows)
+      if (currWickBottom > 2 * currBody && currWickTop < currBody) {
+        return "bullish_pin";
+      }
+
+      // Bearish Pin Bar (rejection of highs)
+      if (currWickTop > 2 * currBody && currWickBottom < currBody) {
+        return "bearish_pin";
+      }
+
+      return null;
+    }
+
     // Fetch 15-minute OHLC + indicators from Twelve Data
     async function fetchCandlesAndIndicators(pair) {
       const symbol = symbolMap[pair];
       if (!symbol) return null;
 
       const interval = "15min";
-      const outputsize = 30; // We only need 30 candles for AI
+      const outputsize = 30;
 
       const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${API_KEY}`;
 
@@ -138,12 +187,10 @@
         const data = await response.json();
         if (!data.values || data.values.length < 20) return null;
 
-        // Calculate EMA(200), RSI(14), ATR(14)
         const closes = data.values.map(v => parseFloat(v.close));
         const highs = data.values.map(v => parseFloat(v.high));
         const lows = data.values.map(v => parseFloat(v.low));
 
-        // Simple EMA(200) — for fallback
         const ema200 = calculateEMA(closes, 200);
         const currentPrice = closes[0];
         const rsi = calculateRSI(closes, 14);
@@ -211,50 +258,27 @@
       return trSum / period;
     }
 
-    // AI Trend Predictor Model (Lightweight — runs in browser)
+    // AI Trend Predictor (simulated)
     let aiModel = null;
-
     async function loadAiModel() {
       if (aiModel) return aiModel;
-      
-      // Define a simple model (you can replace this with a pre-trained one later)
       const model = tf.sequential();
-      model.add(tf.layers.dense({
-        units: 32,
-        inputShape: [30], // 30 features per candle (OHLC + ATR + RSI)
-        activation: 'relu'
-      }));
-      model.add(tf.layers.dense({ units: 3, activation: 'softmax' })); // Output: [bull, bear, neutral]
-      
-      // Compile
-      model.compile({
-        optimizer: 'adam',
-        loss: 'sparseCategoricalCrossentropy',
-        metrics: ['accuracy']
-      });
-
-      // For demo, we'll simulate prediction — in production, load a real trained model
+      model.add(tf.layers.dense({ units: 32, inputShape: [30], activation: 'relu' }));
+      model.add(tf.layers.dense({ units: 3, activation: 'softmax' }));
+      model.compile({ optimizer: 'adam', loss: 'sparseCategoricalCrossentropy', metrics: ['accuracy'] });
       aiModel = model;
       return aiModel;
     }
 
-    // Simulate AI prediction (replace with real model inference later)
     async function predictTrend(candles) {
-      // In real app: use tf.loadLayersModel('model/model.json') and run inference
-      // Here: simulate based on recent price action
       const recentCloses = candles.slice(0, 5).map(c => c.close);
       const avgChange = recentCloses.reduce((sum, val, i, arr) => sum + (val - arr[i+1] || 0), 0) / 4;
-      
-      if (avgChange > 0) {
-        return { direction: "bull", confidence: 0.75 };
-      } else if (avgChange < 0) {
-        return { direction: "bear", confidence: 0.70 };
-      } else {
-        return { direction: "neutral", confidence: 0.55 };
-      }
+      if (avgChange > 0) return { direction: "bull", confidence: 0.75 };
+      else if (avgChange < 0) return { direction: "bear", confidence: 0.70 };
+      else return { direction: "neutral", confidence: 0.55 };
     }
 
-    // Generate real signal based on strategy + AI
+    // Generate signals with candlestick logic
     async function generateSignals() {
       signalsDiv.innerHTML = "";
       loadingDiv.style.display = "block";
@@ -275,23 +299,47 @@
         let signalType = null;
         let slPips = null;
 
-        // Volatility filter: skip if too choppy
+        // Volatility filter
         const minATR = pair === "XAU/USD" ? 2 : pair === "USD/JPY" ? 0.15 : 0.0005;
         if (atr < minATR) {
           signalCards.push(`<div class="signal-card"><b>${pair}</b><br><span class="no-signal">⏸️ Low volatility — skip</span></div>`);
           continue;
         }
 
-        // Get AI trend prediction
+        // 🔥 Detect candlestick pattern
+        const pattern = detectCandlestickSignal(candles);
+        let patternName = "";
+        let confidenceBonus = 0;
+        let rsiBuyThreshold = 40;
+        let rsiSellThreshold = 60;
+
+        if (pattern) {
+          confidenceBonus = 12;
+          if (pattern === "bullish_engulfing") {
+            patternName = "Bullish Engulfing ✅";
+            rsiBuyThreshold = 45; // More lenient
+          } else if (pattern === "bearish_engulfing") {
+            patternName = "Bearish Engulfing ⚠️";
+            rsiSellThreshold = 55;
+          } else if (pattern === "bullish_pin") {
+            patternName = "Bullish Pin Bar 📌";
+            rsiBuyThreshold = 44;
+          } else if (pattern === "bearish_pin") {
+            patternName = "Bearish Pin Bar 📌";
+            rsiSellThreshold = 56;
+          }
+        }
+
+        // Get AI trend
         const aiPrediction = await predictTrend(candles);
         const { direction: aiDirection, confidence: aiConfidence } = aiPrediction;
 
-        // Strategy: Use AI trend + flexible RSI
+        // 🔥 Enhanced strategy: AI + RSI + Candlestick
         if (aiConfidence > 0.60) {
-          if (aiDirection === "bull" && rsi < 40) {
+          if (aiDirection === "bull" && rsi < rsiBuyThreshold) {
             signalType = "BUY";
             slPips = Math.max(10, Math.round(atr / pipSize * 1.5));
-          } else if (aiDirection === "bear" && rsi > 60) {
+          } else if (aiDirection === "bear" && rsi > rsiSellThreshold) {
             signalType = "SELL";
             slPips = Math.max(10, Math.round(atr / pipSize * 1.5));
           }
@@ -306,7 +354,7 @@
         const slPrice = signalType === "BUY" 
           ? entry - slPips * pipSize 
           : entry + slPips * pipSize;
-        const tpPips = Math.round(slPips * 1.5); // RR = 1.5
+        const tpPips = Math.round(slPips * 1.5);
         const tpPrice = signalType === "BUY"
           ? entry + tpPips * pipSize
           : entry - tpPips * pipSize;
@@ -316,9 +364,10 @@
         const riskPerLot = slPips * pipValue;
         const lotSize = Math.max(0.01, Math.min(1.00, (RISK_AMOUNT / riskPerLot).toFixed(2)));
 
-        // Confidence: combine AI + RSI strength
-        const rsiStrength = signalType === "BUY" ? (40 - rsi) : (rsi - 60);
-        const confidence = Math.min(95, Math.max(50, 50 + rsiStrength * 2 + (aiConfidence * 40)));
+        // Confidence: AI + RSI + Candlestick
+        const rsiStrength = signalType === "BUY" ? (rsiBuyThreshold - rsi) : (rsi - rsiSellThreshold);
+        const baseConf = 50 + Math.min(30, rsiStrength * 2) + (aiConfidence * 30) + confidenceBonus;
+        const confidence = Math.min(95, Math.max(50, baseConf));
         const volClass = atr > (pair === "XAU/USD" ? 5 : pair === "USD/JPY" ? 0.3 : 0.0015) ? "high" : 
                          atr > (pair === "XAU/USD" ? 2 : pair === "USD/JPY" ? 0.15 : 0.0007) ? "medium" : "low";
 
@@ -329,6 +378,7 @@
             Lot Size: ${lotSize} | Risk: $${RISK_AMOUNT.toFixed(2)}<br>
             <span class="volatility ${volClass}">ATR Volatility</span><br>
             AI Trend: ${aiDirection.toUpperCase()} (${Math.round(aiConfidence*100)}%)<br>
+            ${patternName ? `<span class="pattern">${patternName}</span><br>` : ''}
             Confidence: ${Math.round(confidence)}% 
             <div class="confidence-container">
               <div class="confidence-bar" style="width:${confidence}%"></div>
@@ -350,4 +400,4 @@
     })();
   </script>
 </body>
-</html>
+  </html>
