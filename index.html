@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Forex Signal Analyzer — Chart Patterns + Market Structure</title>
+  <title>AI Forex Signal Analyzer — All Hours, Simplified Logic</title>
   <style>
     body {
       font-family: "Poppins", Arial, sans-serif;
@@ -56,7 +56,7 @@
     .low { background: #27ae60; }
     .medium { background: #f1c40f; color: #000; }
     .high { background: #e74c3c; }
-    .pattern, .structure {
+    .pattern, .structure, .chart-pattern, .quality {
       padding: 4px 8px;
       border-radius: 6px;
       font-size: 0.9em;
@@ -66,6 +66,7 @@
     .pattern { background: #9b59b6; color: white; }
     .structure { background: #3498db; color: white; }
     .chart-pattern { background: #e67e22; color: white; }
+    .quality { background: #2ecc71; color: white; }
     .confidence-container {
       background: #2b3558;
       border-radius: 8px;
@@ -92,9 +93,9 @@
   </style>
 </head>
 <body>
-  <h1>AI Forex Signal Analyzer — Chart Patterns + Market Structure 📊🕯️</h1>
+  <h1>AI Forex Signal Analyzer — All Hours, Simplified Logic 📊</h1>
   <button onclick="generateSignals()">🔄 Refresh Signals</button>
-  <div id="loading" style="display:none;">Analyzing chart patterns...</div>
+  <div id="loading" style="display:none;">Generating signals (all hours)...</div>
   <div id="signals"></div>
   <footer id="lastUpdated"></footer>
 
@@ -195,7 +196,7 @@
       return zones;
     }
 
-    // 🔥 CHART PATTERN DETECTION (Core Upgrade)
+    // 🔥 CHART PATTERNS
     function detectChartPatterns(candles, atr) {
       const patterns = [];
       const n = candles.length;
@@ -217,7 +218,7 @@
         }
       }
 
-      // Triangles (last 15 candles)
+      // Triangles
       if (n >= 15) {
         const recent = candles.slice(0, 15);
         const highs = recent.map(c => c.high);
@@ -227,58 +228,24 @@
         const recentHigh = highs[0];
         const recentLow = lows[0];
 
-        // Ascending Triangle: flat highs, rising lows
         if (Math.abs(highestHigh - recentHigh) < atr * 0.3 && lows[0] > lows[5] + atr * 0.5) {
           patterns.push("ascending_triangle");
         }
-        // Descending Triangle: flat lows, falling highs
         else if (Math.abs(lowestLow - recentLow) < atr * 0.3 && highs[0] < highs[5] - atr * 0.5) {
           patterns.push("descending_triangle");
         }
-        // Symmetrical Triangle: converging
         else if (Math.abs(highestHigh - recentHigh) < atr * 0.5 && Math.abs(lowestLow - recentLow) < atr * 0.5) {
           patterns.push("symmetrical_triangle");
         }
       }
 
-      // Head & Shoulders (simplified)
-      if (n >= 30) {
-        const peaks = [];
-        for (let i = 5; i < 25; i++) {
-          if (candles[i].high > candles[i-1].high && candles[i].high > candles[i+1].high) {
-            peaks.push({ index: i, price: candles[i].high });
-          }
-        }
-        if (peaks.length >= 3) {
-          const [left, head, right] = peaks.slice(0, 3);
-          if (head.price > left.price && head.price > right.price && Math.abs(left.price - right.price) < atr * 1.5) {
-            if (candles[0].close < Math.min(left.price, right.price) - atr * 0.5) {
-              patterns.push("head_and_shoulders");
-            }
-          }
-        }
-      }
-
-      // Flag (strong move + consolidation)
+      // Flag
       if (n >= 10) {
         const move = candles[5].close - candles[9].close;
         const consolidation = Math.max(...candles.slice(0, 5).map(c => c.high)) - Math.min(...candles.slice(0, 5).map(c => c.low));
         if (Math.abs(move) > atr * 2 && consolidation < atr * 0.8) {
           if (move > 0) patterns.push("bullish_flag");
           else patterns.push("bearish_flag");
-        }
-      }
-
-      // Cup & Handle (simplified)
-      if (n >= 25) {
-        const lows = candles.slice(0, 25).map(c => c.low);
-        const minIndex = lows.indexOf(Math.min(...lows));
-        if (minIndex > 8 && minIndex < 17) {
-          const leftAvg = lows.slice(0, minIndex).reduce((a,b) => a + b, 0) / minIndex;
-          const rightAvg = lows.slice(minIndex + 1, 25).reduce((a,b) => a + b, 0) / (24 - minIndex);
-          if (Math.abs(leftAvg - rightAvg) < atr * 0.8 && candles[0].close > leftAvg + atr * 0.5) {
-            patterns.push("cup_and_handle");
-          }
         }
       }
 
@@ -377,7 +344,7 @@
       else return { direction: "neutral", confidence: 0.55 };
     }
 
-    // 🔥 MAIN SIGNAL GENERATOR WITH CHART PATTERNS
+    // 🔥 MAIN SIGNAL GENERATOR — SIMPLIFIED LOGIC
     async function generateSignals() {
       signalsDiv.innerHTML = "";
       loadingDiv.style.display = "block";
@@ -398,122 +365,29 @@
         let signalType = null;
         let slPips = null;
 
-        // Volatility filter (relax slightly for chart patterns)
-        const minATR = pair === "XAU/USD" ? 1.5 : pair === "USD/JPY" ? 0.12 : 0.0004;
+        // 🔥 RELAXED VOLATILITY FILTER (works all hours)
+        const minATR = pair === "XAU/USD" ? 1.0 : pair === "USD/JPY" ? 0.08 : 0.00025;
         if (atr < minATR) {
-          signalCards.push(`<div class="signal-card"><b>${pair}</b><br><span class="no-signal">⏸️ Low volatility — skip</span></div>`);
+          signalCards.push(`<div class="signal-card"><b>${pair}</b><br><span class="no-signal">⏸️ Very low volatility — try later</span></div>`);
           continue;
         }
 
-        // Candlestick pattern
-        const pattern = detectCandlestickSignal(candles);
-        let patternName = "";
-        let rsiBuyThreshold = 40;
-        let rsiSellThreshold = 60;
-        if (pattern) {
-          if (pattern === "bullish_engulfing") { patternName = "Bullish Engulfing ✅"; rsiBuyThreshold = 45; }
-          else if (pattern === "bearish_engulfing") { patternName = "Bearish Engulfing ⚠️"; rsiSellThreshold = 55; }
-          else if (pattern === "bullish_pin") { patternName = "Bullish Pin Bar 📌"; rsiBuyThreshold = 44; }
-          else if (pattern === "bearish_pin") { patternName = "Bearish Pin Bar 📌"; rsiSellThreshold = 56; }
-        }
-
-        // AI Trend
+        // 🔥 CORE LOGIC: AI + RSI ONLY → ALWAYS GENERATES SIGNAL IF CONDITIONS MET
         const aiPred = await predictTrend(candles);
         const { direction: aiDir, confidence: aiConf } = aiPred;
-
-        // Generate base signal
-        if (aiConf > 0.55) { // Slightly relaxed for patterns
-          if (aiDir === "bull" && rsi < rsiBuyThreshold) {
+        if (aiConf > 0.55) {
+          if (aiDir === "bull" && rsi < 45) {
             signalType = "BUY";
-            slPips = Math.max(10, Math.round(atr / pipSize * 1.5));
-          } else if (aiDir === "bear" && rsi > rsiSellThreshold) {
+            slPips = Math.max(8, Math.round(atr / pipSize * 1.5));
+          } else if (aiDir === "bear" && rsi > 55) {
             signalType = "SELL";
-            slPips = Math.max(10, Math.round(atr / pipSize * 1.5));
+            slPips = Math.max(8, Math.round(atr / pipSize * 1.5));
           }
         }
 
         if (!signalType) {
-          signalCards.push(`<div class="signal-card"><b>${pair}</b><br><span class="no-signal">⏸️ No valid signal</span></div>`);
+          signalCards.push(`<div class="signal-card"><b>${pair}</b><br><span class="no-signal">⏸️ No momentum (RSI neutral)</span></div>`);
           continue;
-        }
-
-        // 🔥 MARKET STRUCTURE
-        let structureTags = [];
-        let structureBonus = 0;
-
-        const swings = detectSwings(candles, 5);
-        const nearSwingLow = swings.lows.some(low => Math.abs(entry - low) < 1.5 * atr);
-        const nearSwingHigh = swings.highs.some(high => Math.abs(entry - high) < 1.5 * atr);
-        if (signalType === "BUY" && nearSwingLow) {
-          structureTags.push("Near Swing Low 📉");
-          structureBonus += 8;
-        }
-        if (signalType === "SELL" && nearSwingHigh) {
-          structureTags.push("Near Swing High 📈");
-          structureBonus += 8;
-        }
-
-        const fvgs = detectFVG(candles);
-        const nearBullFVG = fvgs.some(f => f.type === "bullish" && entry > f.low && entry < f.low + 2 * atr);
-        const nearBearFVG = fvgs.some(f => f.type === "bearish" && entry < f.high && entry > f.high - 2 * atr);
-        if (signalType === "BUY" && nearBullFVG) {
-          structureTags.push("FVG Support 🟢");
-          structureBonus += 6;
-        }
-        if (signalType === "SELL" && nearBearFVG) {
-          structureTags.push("FVG Resistance 🔴");
-          structureBonus += 6;
-        }
-
-        const zones = detectSupplyDemand(candles, atr);
-        const inDemand = zones.demand.some(z => entry >= z.low && entry <= z.high + 1.5 * atr);
-        const inSupply = zones.supply.some(z => entry <= z.high && entry >= z.low - 1.5 * atr);
-        if (signalType === "BUY" && inDemand) {
-          structureTags.push("In Demand Zone ✅");
-          structureBonus += 7;
-        }
-        if (signalType === "SELL" && inSupply) {
-          structureTags.push("In Supply Zone ⚠️");
-          structureBonus += 7;
-        }
-
-        // 🔥 CHART PATTERNS - NEW CORE UPGRADE
-        let chartPatternTags = [];
-        let chartPatternBonus = 0;
-        const chartPatterns = detectChartPatterns(candles, atr);
-        const isGold = pair === "XAU/USD";
-
-        // Only apply chart patterns to forex (you're happy with gold as-is)
-        if (!isGold && chartPatterns.length > 0) {
-          const cp = chartPatterns[0]; // Use first detected pattern
-          if (cp === "double_top" && signalType === "SELL") {
-            chartPatternTags.push("Double Top 📉");
-            chartPatternBonus += 12;
-          } else if (cp === "double_bottom" && signalType === "BUY") {
-            chartPatternTags.push("Double Bottom 📈");
-            chartPatternBonus += 12;
-          } else if (cp === "head_and_shoulders" && signalType === "SELL") {
-            chartPatternTags.push("Head & Shoulders 📉");
-            chartPatternBonus += 15;
-          } else if (cp === "ascending_triangle" && signalType === "BUY") {
-            chartPatternTags.push("Ascending Triangle 📈");
-            chartPatternBonus += 10;
-          } else if (cp === "descending_triangle" && signalType === "SELL") {
-            chartPatternTags.push("Descending Triangle 📉");
-            chartPatternBonus += 10;
-          } else if (cp === "symmetrical_triangle" && ((signalType === "BUY" && aiDir === "bull") || (signalType === "SELL" && aiDir === "bear"))) {
-            chartPatternTags.push("Symmetrical Triangle 🔺");
-            chartPatternBonus += 9;
-          } else if (cp === "bullish_flag" && signalType === "BUY") {
-            chartPatternTags.push("Bullish Flag 🚩");
-            chartPatternBonus += 11;
-          } else if (cp === "bearish_flag" && signalType === "SELL") {
-            chartPatternTags.push("Bearish Flag 🚩");
-            chartPatternBonus += 11;
-          } else if (cp === "cup_and_handle" && signalType === "BUY") {
-            chartPatternTags.push("Cup & Handle 🫖");
-            chartPatternBonus += 14;
-          }
         }
 
         // Calculate SL/TP
@@ -526,34 +400,66 @@
         const riskPerLot = slPips * pipValue;
         const lotSize = Math.max(0.01, Math.min(1.00, (RISK_AMOUNT / riskPerLot).toFixed(2)));
 
-        // Confidence: AI + RSI + Candlestick + Structure + Chart Patterns
-        const rsiStrength = signalType === "BUY" ? (rsiBuyThreshold - rsi) : (rsi - rsiSellThreshold);
-        const baseConf = 50 + Math.min(30, rsiStrength * 2) + (aiConf * 30) + (pattern ? 12 : 0) + structureBonus + chartPatternBonus;
+        // 🔥 CONFLUENCE DETECTION (for confidence only)
+        let totalBonus = 0;
+        let qualityTag = "Basic Setup";
+        let extraTags = [];
+
+        // Candlestick
+        const candlePattern = detectCandlestickSignal(candles);
+        if (candlePattern) {
+          totalBonus += 12;
+          let name = "";
+          if (candlePattern === "bullish_engulfing") name = "Bullish Engulfing ✅";
+          else if (candlePattern === "bearish_engulfing") name = "Bearish Engulfing ⚠️";
+          else if (candlePattern === "bullish_pin") name = "Bullish Pin Bar 📌";
+          else if (candlePattern === "bearish_pin") name = "Bearish Pin Bar 📌";
+          extraTags.push(`<span class="pattern">${name}</span>`);
+        }
+
+        // Market Structure
+        const swings = detectSwings(candles, 5);
+        const nearSwingLow = swings.lows.some(low => Math.abs(entry - low) < 1.5 * atr);
+        const nearSwingHigh = swings.highs.some(high => Math.abs(entry - high) < 1.5 * atr);
+        const fvgs = detectFVG(candles);
+        const nearBullFVG = fvgs.some(f => f.type === "bullish" && entry > f.low && entry < f.low + 2 * atr);
+        const nearBearFVG = fvgs.some(f => f.type === "bearish" && entry < f.high && entry > f.high - 2 * atr);
+        if ((signalType === "BUY" && (nearSwingLow || nearBullFVG)) || 
+            (signalType === "SELL" && (nearSwingHigh || nearBearFVG))) {
+          totalBonus += 10;
+          extraTags.push(`<span class="structure">Structure Align 🌐</span>`);
+        }
+
+        // Chart Patterns (forex only)
+        if (pair !== "XAU/USD") {
+          const chartPatterns = detectChartPatterns(candles, atr);
+          if (chartPatterns.length > 0) {
+            totalBonus += 14;
+            extraTags.push(`<span class="chart-pattern">Chart Pattern 📈</span>`);
+          }
+        }
+
+        // Quality tag
+        if (totalBonus >= 20) qualityTag = "High Confluence 🌟";
+        else if (totalBonus >= 10) qualityTag = "Price Action ✅";
+
+        // Final confidence
+        const rsiStrength = signalType === "BUY" ? (45 - rsi) : (rsi - 55);
+        const baseConf = 55 + Math.min(25, rsiStrength * 2) + (aiConf * 25) + totalBonus;
         const confidence = Math.min(95, Math.max(50, baseConf));
         const volClass = atr > (pair === "XAU/USD" ? 5 : pair === "USD/JPY" ? 0.3 : 0.0015) ? "high" : 
                          atr > (pair === "XAU/USD" ? 2 : pair === "USD/JPY" ? 0.15 : 0.0007) ? "medium" : "low";
 
         // Build UI
-        let structureHtml = '';
-        if (structureTags.length > 0) {
-          structureHtml = `<span class="structure">${structureTags.join(' | ')}</span><br>`;
-        }
-
-        let chartPatternHtml = '';
-        if (chartPatternTags.length > 0) {
-          chartPatternHtml = `<span class="chart-pattern">${chartPatternTags.join(' | ')}</span><br>`;
-        }
-
         signalCards.push(`
           <div class="signal-card">
             <b>${pair}</b> | <span style="color:${signalType==='BUY'?'#27ae60':'#e74c3c'}">${signalType}</span><br>
             Entry: ${formatPrice(entry, pair)} | SL: ${formatPrice(slPrice, pair)} | TP: ${formatPrice(tpPrice, pair)} | RR: 1.5<br>
             Lot Size: ${lotSize} | Risk: $${RISK_AMOUNT.toFixed(2)}<br>
             <span class="volatility ${volClass}">ATR Volatility</span><br>
+            <span class="quality">${qualityTag}</span><br>
             AI Trend: ${aiDir.toUpperCase()} (${Math.round(aiConf*100)}%)<br>
-            ${patternName ? `<span class="pattern">${patternName}</span><br>` : ''}
-            ${structureHtml}
-            ${chartPatternHtml}
+            ${extraTags.join('<br>')}
             Confidence: ${Math.round(confidence)}% 
             <div class="confidence-container">
               <div class="confidence-bar" style="width:${confidence}%"></div>
