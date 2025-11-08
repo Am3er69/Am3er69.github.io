@@ -354,12 +354,14 @@ async function buildSignalForPair(pair){
     conf += (rsi < 40 || rsi > 60) ? 4 : 0;
     conf += Math.min(10, Math.round((atrPips/Math.max(1,slPips))*10));
 
-    // Detect Bullish/Bearish Engulfing pattern
-    const engulfing = detectEngulfing(candles);
+    // Detect Bullish/Bearish Engulfing pattern (only if we have at least 2 candles)
     let patternType = "";
-    if (engulfing) {
-      patternType = engulfing;
-      conf += 5; // bonus for auto-detected pattern
+    if (candles.length >= 2) {
+      const engulfing = detectEngulfing(candles);
+      if (engulfing) {
+        patternType = engulfing;
+        conf += 5; // bonus for auto-detected pattern
+      }
     }
 
     // Add MA Cycle Phase (manual input later)
