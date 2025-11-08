@@ -353,12 +353,26 @@ async function buildSignalForPair(pair){
     conf += (Math.abs(currentPrice - ema200) / Math.max(ema200*0.0001,1) < 0.01)?6:0; // near ema bonus
     conf += (rsi < 40 || rsi > 60) ? 4 : 0;
     conf += Math.min(10, Math.round((atrPips/Math.max(1,slPips))*10));
+
+    // Detect Bullish/Bearish Engulfing pattern
+    const engulfing = detectEngulfing(candles);
+    let patternType = "";
+    if (engulfing) {
+      patternType = engulfing;
+      conf += 5; // bonus for auto-detected pattern
+    }
+
+    // Add MA Cycle Phase (manual input later)
+    let maCycle = "";
+
+    // Final confidence cap
     conf = Math.min(95, conf);
 
     return {
       pair, valid:true, candidate, entry, slPrice, tpPrice,
       slPips, tpPips: Math.round(Math.abs((tpPrice - entry)/psize)),
-      lots, conf, atr, rsi, ema200, currentPrice, candles
+      lots, conf, atr, rsi, ema200, currentPrice, candles,
+      patternType, maCycle // added for context
     };
   }catch(err){
     console.error("build signal error", pair, err);
@@ -480,6 +494,27 @@ async function refreshAll(){
           <div class="${volClass}" style="margin-top:8px">ATR:${sig.atr.toFixed(dec)} RSI:${Math.round(sig.rsi)}</div>
           <div style="margin-top:8px" class="muted">Confidence: ${sig.conf}%</div>
           <div class="conf-bar"><div class="conf-fill" style="width:${sig.conf}%"></div></div>
+          
+          <!-- MA Cycle Phase -->
+          <div style="margin-top:8px; padding:8px; background:rgba(255,255,255,0.02); border-radius:6px;">
+            <label class="muted">MA Cycle Phase:</label><br>
+            <select class="ma-cycle" data-pair="${sig.pair}" style="width:100%; background:transparent; border:1px solid rgba(255,255,255,0.05); color:#e6f0fa; padding:6px;">
+              <option value="">— Select —</option>
+              <option value="U1">U1 - Possible Uptrend</option>
+              <option value="U2">U2 - Confirmed Uptrend</option>
+              <option value="U3">U3 - Well-Defined Uptrend</option>
+              <option value="D1">D1 - Possible Downtrend</option>
+              <option value="D2">D2 - Confirmed Downtrend</option>
+              <option value="D3">D3 - Well-Defined Downtrend</option>
+            </select>
+          </div>
+          
+          <!-- Pattern Type -->
+          <div style="margin-top:8px; padding:8px; background:rgba(255,255,255,0.02); border-radius:6px;">
+            <label class="muted">Pattern Type:</label><br>
+            <input type="text" class="pattern-type" data-pair="${sig.pair}" value="${sig.patternType || ''}" placeholder="e.g., Bullish Engulfing, Head & Shoulders..." style="width:100%; background:transparent; border:1px solid rgba(255,255,255,0.05); color:#e6f0fa; padding:6px;" />
+          </div>
+          
           <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
             <button onclick='markTaken(${JSON.stringify(sig)})'>✅ Mark Taken</button>
             <button onclick='showStructure(${JSON.stringify({pair: sig.pair, recent: sig.candles.slice(0,12)})})' class="ghost">Show Structure</button>
@@ -503,6 +538,23 @@ async function refreshAll(){
   setTimeout(() => {
     runBacktestForAll();
   }, 1000);
+
+  // Add event listeners for MA Cycle and Pattern Type
+  document.querySelectorAll('.ma-cycle').forEach(select => {
+    select.addEventListener('change', function() {
+      const pair = this.dataset.pair;
+      console.log(`MA Cycle for ${pair}: ${this.value}`);
+      // You can store this in memory or local storage later for filtering
+    });
+  });
+
+  document.querySelectorAll('.pattern-type').forEach(input => {
+    input.addEventListener('change', function() {
+      const pair = this.dataset.pair;
+      console.log(`Pattern Type for ${pair}: ${this.value}`);
+      // You can store this in memory or local storage later for filtering
+    });
+  });
 }
 
 /* ===========================
@@ -612,6 +664,27 @@ function showStructure(obj){
   let text = `${obj.pair}\nRecent highs/lows (most recent first):\n`;
   recent.slice(0,12).forEach(c=> text += `H:${c.high} L:${c.low} C:${c.close}\n`);
   alert(text);
+}
+
+/* ===========================
+   Helper: Detect Bullish/Bearish Engulfing
+   =========================== */
+function detectEngulfing(candles) {
+  if (candles.length < 2) return null;
+  const prev = candles[1]; // previous candle
+  const curr = candles[0]; // current candle
+
+  // Bullish Engulfing: green candle closes above previous red candle's open
+  if (curr.close > curr.open && prev.close < prev.open && curr.close > prev.open && curr.open < prev.close) {
+    return "Bullish Engulfing";
+  }
+
+  // Bearish Engulfing: red candle closes below previous green candle's open
+  if (curr.close < curr.open && prev.close > prev.open && curr.close < prev.open && curr.open > prev.close) {
+    return "Bearish Engulfing";
+  }
+
+  return null;
 }
 
 /* ===========================
