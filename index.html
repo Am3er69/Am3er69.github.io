@@ -133,7 +133,6 @@ const SPREAD_BUFFER_PIPS_XAU = 15;    // for gold (units = pip as 0.01 -> ~0.15 
 const SETTINGS_KEY = "fx_analyzer_settings_v1";
 const TRACKER_KEY = "fx_analyzer_tracker_v1";
 const PERF_KEY = "fx_analyzer_perf_v1";
-const CACHE_KEY = "fx_analyzer_cache_v1"; // for last successful signals
 
 /* ===========================
    STORAGE HELPERS
@@ -153,15 +152,13 @@ function loadTracker(){ return JSON.parse(localStorage.getItem(TRACKER_KEY) || "
 function saveTracker(a){ localStorage.setItem(TRACKER_KEY, JSON.stringify(a)); }
 function loadPerf(){ return JSON.parse(localStorage.getItem(PERF_KEY) || "[]"); }
 function savePerf(a){ localStorage.setItem(PERF_KEY, JSON.stringify(a)); }
-function loadCache(){ return JSON.parse(localStorage.getItem(CACHE_KEY) || "[]"); }
-function saveCache(a){ localStorage.setItem(CACHE_KEY, JSON.stringify(a)); }
 
 /* ===========================
    UI Hooks
    =========================== */
 const signalsContainer = document.getElementById("signalsContainer");
 const lastUpdatedEl = document.getElementById("lastUpdated");
-let settings = loadSettings();
+const settings = loadSettings();
 document.getElementById("accountBalance").value = settings.accountBalance;
 document.getElementById("riskPercent").value = settings.riskPercent;
 document.getElementById("slMultiplier").value = settings.slMultiplier;
@@ -185,16 +182,13 @@ function pipSize(pair){
 function decimals(pair){ return (pair.includes("JPY")||pair==="XAU/USD")?2:5; }
 
 /* ===========================
-   TwelveData helpers (live + candles) with timeout
+   TwelveData helpers (live + candles)
    =========================== */
 async function tdPrice(pair){
   const symbol = pair.replace("/",""); // TwelveData accepts like EURUSD or EUR/USD; this works
   const url = `https://api.twelvedata.com/price?symbol=${encodeURIComponent(pair)}&apikey=${TD_KEY}`;
   try{
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-    const r = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    const r = await fetch(url);
     const j = await r.json();
     if(j && j.price) return parseFloat(j.price);
   }catch(e){ 
@@ -210,10 +204,7 @@ async function tdPrice(pair){
 async function tdCandles(pair, bars){
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(pair)}&interval=${INTERVAL}&outputsize=${bars}&format=JSON&apikey=${TD_KEY}`;
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-    const r = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    const r = await fetch(url);
     const j = await r.json();
     if(!j || !j.values) throw new Error("no data");
     // Convert to arrays of objects: newest first in values, we keep that ordering
@@ -362,26 +353,12 @@ async function buildSignalForPair(pair){
     conf += (Math.abs(currentPrice - ema200) / Math.max(ema200*0.0001,1) < 0.01)?6:0; // near ema bonus
     conf += (rsi < 40 || rsi > 60) ? 4 : 0;
     conf += Math.min(10, Math.round((atrPips/Math.max(1,slPips))*10));
-
-    // Detect Bullish/Bearish Engulfing pattern
-    const engulfing = detectEngulfing(candles);
-    let patternType = "";
-    if (engulfing) {
-      patternType = engulfing;
-      conf += 5; // bonus for auto-detected pattern
-    }
-
-    // Add MA Cycle Phase (manual input later)
-    let maCycle = "";
-
-    // Final confidence cap
     conf = Math.min(95, conf);
 
     return {
       pair, valid:true, candidate, entry, slPrice, tpPrice,
       slPips, tpPips: Math.round(Math.abs((tpPrice - entry)/psize)),
-      lots, conf, atr, rsi, ema200, currentPrice, candles,
-      patternType, maCycle // added for context
+      lots, conf, atr, rsi, ema200, currentPrice, candles
     };
   }catch(err){
     console.error("build signal error", pair, err);
@@ -482,8 +459,6 @@ async function refreshAll(){
 
   signalsContainer.innerHTML = '<div class="muted">Fetching signals & recent candles...</div>';
   const built = [];
-  let allFailed = true; // track if ALL pairs failed
-
   for(const pair of PAIRS){
     try {
       const sig = await buildSignalForPair(pair);
@@ -491,7 +466,6 @@ async function refreshAll(){
         built.push(`<div class="signal-card"><div class="pair"><div><strong>${pair}</strong></div></div><div class="meta">${sig.reason || 'No signal'}</div></div>`);
         continue;
       }
-      allFailed = false; // at least one succeeded
       const dec = decimals(pair);
       const volClass = sig.atr > (pair==="XAU/USD"?2: pair.includes("JPY")?0.05:0.0007) ? "vol.high" : "vol.mid";
       const html = `
@@ -506,27 +480,6 @@ async function refreshAll(){
           <div class="${volClass}" style="margin-top:8px">ATR:${sig.atr.toFixed(dec)} RSI:${Math.round(sig.rsi)}</div>
           <div style="margin-top:8px" class="muted">Confidence: ${sig.conf}%</div>
           <div class="conf-bar"><div class="conf-fill" style="width:${sig.conf}%"></div></div>
-          
-          <!-- MA Cycle Phase -->
-          <div style="margin-top:8px; padding:8px; background:rgba(255,255,255,0.02); border-radius:6px;">
-            <label class="muted">MA Cycle Phase:</label><br>
-            <select class="ma-cycle" data-pair="${sig.pair}" style="width:100%; background:transparent; border:1px solid rgba(255,255,255,0.05); color:#e6f0fa; padding:6px;">
-              <option value="">— Select —</option>
-              <option value="U1">U1 - Possible Uptrend</option>
-              <option value="U2">U2 - Confirmed Uptrend</option>
-              <option value="U3">U3 - Well-Defined Uptrend</option>
-              <option value="D1">D1 - Possible Downtrend</option>
-              <option value="D2">D2 - Confirmed Downtrend</option>
-              <option value="D3">D3 - Well-Defined Downtrend</option>
-            </select>
-          </div>
-          
-          <!-- Pattern Type -->
-          <div style="margin-top:8px; padding:8px; background:rgba(255,255,255,0.02); border-radius:6px;">
-            <label class="muted">Pattern Type:</label><br>
-            <input type="text" class="pattern-type" data-pair="${sig.pair}" value="${sig.patternType || ''}" placeholder="e.g., Bullish Engulfing, Head & Shoulders..." style="width:100%; background:transparent; border:1px solid rgba(255,255,255,0.05); color:#e6f0fa; padding:6px;" />
-          </div>
-          
           <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
             <button onclick='markTaken(${JSON.stringify(sig)})'>✅ Mark Taken</button>
             <button onclick='showStructure(${JSON.stringify({pair: sig.pair, recent: sig.candles.slice(0,12)})})' class="ghost">Show Structure</button>
@@ -541,72 +494,15 @@ async function refreshAll(){
     }
   }
 
-  // If all pairs failed, show cached signals
-  if (allFailed) {
-    const cached = loadCache();
-    if (cached.length > 0) {
-      signalsContainer.innerHTML = `<div class="muted">⚠️ API failed — showing last cached signals from ${new Date(cached[0].cachedAt).toLocaleString()}</div>`;
-      const cachedHtml = cached.map(sig => {
-        const dec = decimals(sig.pair);
-        const volClass = sig.atr > (sig.pair==="XAU/USD"?2: sig.pair.includes("JPY")?0.05:0.0007) ? "vol.high" : "vol.mid";
-        return `
-          <div class="signal-card">
-            <div class="pair"><div><strong>${sig.pair}</strong> <span class="chip">${sig.candidate}</span></div>
-              <div class="muted">Entry ${sig.entry.toFixed(dec)}</div></div>
-            <div class="meta">
-              <div>SL: <strong>${sig.slPrice.toFixed(dec)}</strong> (${sig.slPips} pips)</div>
-              <div>TP: <strong>${sig.tpPrice.toFixed(dec)}</strong> (${sig.tpPips} pips)</div>
-              <div>Lot: <strong>${sig.lots}</strong></div>
-            </div>
-            <div class="${volClass}" style="margin-top:8px">ATR:${sig.atr.toFixed(dec)} RSI:${Math.round(sig.rsi)}</div>
-            <div style="margin-top:8px" class="muted">Confidence: ${sig.conf}%</div>
-            <div class="conf-bar"><div class="conf-fill" style="width:${sig.conf}%"></div></div>
-            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-              <button onclick='markTaken(${JSON.stringify(sig)})'>✅ Mark Taken</button>
-              <button onclick='showStructure(${JSON.stringify({pair: sig.pair, recent: sig.candles.slice(0,12)})})' class="ghost">Show Structure</button>
-              <button onclick='runBacktest(${JSON.stringify(sig.pair)}, ${settings.backtestBars})' class="ghost">🧪 Backtest ${settings.backtestBars} bars</button>
-            </div>
-          </div>
-        `;
-      }).join("");
-      signalsContainer.innerHTML += cachedHtml;
-    } else {
-      signalsContainer.innerHTML = `<div class="signal-card"><div class="pair"><div><strong>Error</strong></div></div><div class="meta">All API calls failed. Check console for details. No cached signals available.</div></div>`;
-    }
-  } else {
-    // Save successful signals to cache
-    const cacheData = built.map(html => {
-      // Extract signal data from HTML (simplified — in production, store object directly)
-      return { ...JSON.parse(html.match(/markTaken\(([^)]+)\)/)?.[1] || {}, cachedAt: new Date().toISOString() };
-    }).filter(Boolean);
-    saveCache(cacheData);
-    signalsContainer.innerHTML = built.join("");
-    // animate conf bars
-    document.querySelectorAll('.conf-fill').forEach(e=>{ const w=e.style.width; e.style.width='0%'; setTimeout(()=>e.style.width=w,50); });
-    lastUpdatedEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
+  signalsContainer.innerHTML = built.join("");
+  // animate conf bars
+  document.querySelectorAll('.conf-fill').forEach(e=>{ const w=e.style.width; e.style.width='0%'; setTimeout(()=>e.style.width=w,50); });
+  lastUpdatedEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
 
-    // Auto-run backtest after signals are loaded
-    setTimeout(() => {
-      runBacktestForAll();
-    }, 1000);
-
-    // Add event listeners for MA Cycle and Pattern Type
-    document.querySelectorAll('.ma-cycle').forEach(select => {
-      select.addEventListener('change', function() {
-        const pair = this.dataset.pair;
-        console.log(`MA Cycle for ${pair}: ${this.value}`);
-        // You can store this in memory or local storage later for filtering
-      });
-    });
-
-    document.querySelectorAll('.pattern-type').forEach(input => {
-      input.addEventListener('change', function() {
-        const pair = this.dataset.pair;
-        console.log(`Pattern Type for ${pair}: ${this.value}`);
-        // You can store this in memory or local storage later for filtering
-      });
-    });
-  }
+  // Auto-run backtest after signals are loaded
+  setTimeout(() => {
+    runBacktestForAll();
+  }, 1000);
 }
 
 /* ===========================
@@ -707,7 +603,7 @@ function parameterReview(){
 /* ===========================
    Utilities: reset & init
    =========================== */
-function resetLocal(){ if(confirm("Reset local settings & saved trades?")){ localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(TRACKER_KEY); localStorage.removeItem(PERF_KEY); localStorage.removeItem(CACHE_KEY); location.reload(); } }
+function resetLocal(){ if(confirm("Reset local settings & saved trades?")){ localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(TRACKER_KEY); localStorage.removeItem(PERF_KEY); location.reload(); } }
 
 function showStructure(obj){
   // simple viewer: obj = {pair, recent: [candles newest-first]} OR pass string
@@ -719,29 +615,9 @@ function showStructure(obj){
 }
 
 /* ===========================
-   Helper: Detect Bullish/Bearish Engulfing
-   =========================== */
-function detectEngulfing(candles) {
-  if (candles.length < 2) return null;
-  const prev = candles[1]; // previous candle
-  const curr = candles[0]; // current candle
-
-  // Bullish Engulfing: green candle closes above previous red candle's open
-  if (curr.close > curr.open && prev.close < prev.open && curr.close > prev.open && curr.open < prev.close) {
-    return "Bullish Engulfing";
-  }
-
-  // Bearish Engulfing: red candle closes below previous green candle's open
-  if (curr.close < curr.open && prev.close > prev.open && curr.close < prev.open && curr.open > prev.close) {
-    return "Bearish Engulfing";
-  }
-
-  return null;
-}
-
-/* ===========================
    Init
    =========================== */
+let settings = loadSettings();
 (async function init(){
   try{
     await refreshAll();
