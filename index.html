@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Forex Signal Analyzer — EMA/RSI + Backtest Confidence (All Pairs)</title>
+<title>Forex Signal Analyzer PRO — EMA/RSI + Backtest (Gold HQ)</title>
 <style>
-:root{--bg:#071126;--card:#0f2340;--accent:#2ad3a5;--muted:#9fb0c8;--danger:#ff6b6b;}
+:root{
+  --bg:#071126; --card:#0f2340; --accent:#2ad3a5; --muted:#9fb0c8; --gold:#d4af37; --danger:#ff6b6b;
+}
 body{margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);color:#e6f0fa}
 header{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.03)}
 h1{margin:0;font-size:18px;color:var(--accent)}
@@ -16,9 +18,10 @@ button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(25
 .panel{background:var(--card);border-radius:10px;padding:12px;box-shadow:0 6px 20px rgba(2,8,23,0.6)}
 .panel.small{width:320px}
 .panel.big{flex:1 1 760px;min-width:320px}
-.muted{color:var(--muted);font-size:13px}
-input,select{background:transparent;border:1px solid rgba(255,255,255,0.05);padding:8px;border-radius:6px;color:#e6f0fa}
+.small-muted{font-size:12px;color:#9fb0c8}
+.input{background:transparent;border:1px solid rgba(255,255,255,0.05);padding:8px;border-radius:6px;color:#e6f0fa;width:100%}
 .signal-card{border-radius:8px;padding:12px;margin-bottom:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border:1px solid rgba(255,255,255,0.03)}
+.signal-card.hq{box-shadow:0 6px 24px rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.22)}
 .pair{display:flex;justify-content:space-between;align-items:center}
 .chip{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.02);font-weight:700}
 .meta{font-size:13px;color:var(--muted);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap}
@@ -26,17 +29,17 @@ input,select{background:transparent;border:1px solid rgba(255,255,255,0.05);padd
 .vol.mid{background:#f1c40f;color:#201600;padding:4px 8px;border-radius:6px}
 .vol.high{background:#d63c3c;color:#fff;padding:4px 8px;border-radius:6px}
 .conf-bar{height:8px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;margin-top:8px}
-.conf-fill{height:100%;background:linear-gradient(90deg,#ff6b6b,#ffd24d,#3ee3b1);width:0%;transition:width 600ms ease}
+.conf-fill{height:100%;background:linear-gradient(90deg,var(--danger),#ffd24d,var(--gold));width:0%;transition:width 600ms ease}
 .stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px}
 .stat{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;text-align:center}
-footer{padding:12px;color:var(--muted);text-align:center;border-top:1px solid rgba(255,255,255,0.03);margin-top:12px}
-.small-muted{font-size:12px;color:var(--muted)}
+footer{padding:12px;color:var(--small-muted);text-align:center;border-top:1px solid rgba(255,255,255,0.03);margin-top:12px}
 @media(max-width:900px){.wrap{flex-direction:column}.panel.small{width:100%}.panel.big{width:100%}}
+a.small-muted{color:var(--muted);text-decoration:underline}
 </style>
 </head>
 <body>
 <header>
-  <h1>Forex Signal Analyzer — EMA50/EMA200 + RSI + Candles</h1>
+  <h1>Forex Signal Analyzer PRO — EMA50/EMA200 + RSI + Candles</h1>
   <div class="controls">
     <button onclick="manualRefresh()">🔁 Refresh Now</button>
     <button class="ghost" onclick="openTracker()">Tracker</button>
@@ -49,20 +52,21 @@ footer{padding:12px;color:var(--muted);text-align:center;border-top:1px solid rg
     <div class="small-muted">Balance & risk</div>
     <div style="margin-top:8px;">
       <label class="small-muted">Account (USD)</label><br>
-      <input id="accountBalance" type="number" value="1000" min="10" />
+      <input id="accountBalance" class="input" type="number" value="1000" min="10" />
     </div>
     <div style="margin-top:8px;">
       <label class="small-muted">Risk % per trade</label><br>
-      <input id="riskPercent" type="number" value="1" step="0.1" min="0.1" />
+      <input id="riskPercent" class="input" type="number" value="1" step="0.1" min="0.1" />
     </div>
 
     <hr style="opacity:0.04;margin:12px 0" />
     <div><strong>Backtest</strong></div>
-    <div class="small-muted">Recent bars (lightweight)</div>
+    <div class="small-muted">Deeper but API-efficient</div>
     <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-      <label class="small-muted">Bars</label>
-      <select id="backtestBars"><option>50</option><option>75</option><option selected>100</option></select>
+      <label class="small-muted">Cached bars (deep fetch)</label>
+      <select id="deepBars" class="input" style="width:110px"><option>200</option><option selected>300</option><option>400</option><option>500</option></select>
     </div>
+    <div style="margin-top:8px;" class="small-muted">Light backtest uses fewer bars (config below)</div>
     <div style="margin-top:10px;">
       <button class="ghost" onclick="runBacktestForAll()">▶ Run Backtest Now</button>
     </div>
@@ -72,11 +76,11 @@ footer{padding:12px;color:var(--muted);text-align:center;border-top:1px solid rg
     <div class="small-muted">SL multiplier & Max SL</div>
     <div style="margin-top:8px;">
       <label class="small-muted">SL multiplier</label><br>
-      <input id="slMultiplier" type="number" value="1.0" step="0.05" />
+      <input id="slMultiplier" class="input" type="number" value="1.0" step="0.05" />
     </div>
     <div style="margin-top:8px;">
       <label class="small-muted">Max SL (pips, majors)</label><br>
-      <input id="maxSlPips" type="number" value="30" />
+      <input id="maxSlPips" class="input" type="number" value="30" />
     </div>
 
     <div style="margin-top:12px;">
@@ -105,26 +109,27 @@ footer{padding:12px;color:var(--muted);text-align:center;border-top:1px solid rg
   <div style="margin-top:10px"><button onclick="clearTracker()" class="ghost">Clear Tracker</button></div>
 </div>
 
-<footer>Manual trading only. Backtest uses recent bars to conserve API calls. Test on demo first.</footer>
+<footer class="small-muted">Manual trades only. Cached deep history keeps API usage low. Test on demo first.</footer>
 
 <script>
-/* ================= CONFIG ================= */
-const TD_KEY = "318e2543fba14c57836adc5ce228ee7e"; // user's Twelve Data key (as provided)
+/* ================= CONFIG & KEYS ================= */
+const TD_KEY = "318e2543fba14c57836adc5ce228ee7e"; // YOUR Twelve Data key
 const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","NZD/USD","USD/CHF","XAU/USD"];
 const INTERVAL = "1h";
-const BACKTEST_LIMIT = 120;
+const BACKTEST_LIMIT = 500;
 const MIN_ENTRY_PIPS = 10;
 const MAX_ENTRY_PIPS = 15;
 const RR_TARGET = 2.0;
 const SPREAD_BUFFER_PIPS_MAJOR = 0.5;
 const SPREAD_BUFFER_PIPS_XAU = 15;
-const SETTINGS_KEY = "fx_settings_v3";
-const TRACKER_KEY = "fx_tracker_v3";
-const PERF_KEY = "fx_perf_v3";
-const AUTO_REFRESH_MINUTES = 5; // auto refresh interval
+const SETTINGS_KEY = "fx_settings_v4";
+const TRACKER_KEY = "fx_tracker_v4";
+const PERF_KEY = "fx_perf_v4";
+const AUTO_REFRESH_MINUTES = 5; // signals refresh
+const AUTO_BACKTEST_MINUTES = 10; // backtest refresh
 
-/* ============== storage & UI init ============== */
-function loadSettings(){ return Object.assign({accountBalance:1000,riskPercent:1,slMultiplier:1.0,maxSlPips:30,backtestBars:100}, JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}")); }
+/* ============== Storage & Settings ============== */
+function loadSettings(){ return Object.assign({accountBalance:1000,riskPercent:1,slMultiplier:1.0,maxSlPips:30,backtestBars:100,deepBars:300}, JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}")); }
 function saveSettings(s){ localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
 function loadTracker(){ return JSON.parse(localStorage.getItem(TRACKER_KEY)||"[]"); }
 function saveTracker(a){ localStorage.setItem(TRACKER_KEY, JSON.stringify(a)); }
@@ -137,22 +142,24 @@ document.getElementById("accountBalance").value = settings.accountBalance;
 document.getElementById("riskPercent").value = settings.riskPercent;
 document.getElementById("slMultiplier").value = settings.slMultiplier;
 document.getElementById("maxSlPips").value = settings.maxSlPips;
-document.getElementById("backtestBars").value = settings.backtestBars;
+document.getElementById("backtestBars")?.addEventListener?.("change", ()=>{});
+document.getElementById("deepBars").value = settings.deepBars;
+document.getElementById("deepBars").addEventListener("change", ()=>{ settings.deepBars = +document.getElementById("deepBars").value; saveSettings(settings); });
+
 document.getElementById("accountBalance").addEventListener("change", ()=>{ settings.accountBalance=+document.getElementById("accountBalance").value; saveSettings(settings); });
 document.getElementById("riskPercent").addEventListener("change", ()=>{ settings.riskPercent=+document.getElementById("riskPercent").value; saveSettings(settings); });
 document.getElementById("slMultiplier").addEventListener("change", ()=>{ settings.slMultiplier=+document.getElementById("slMultiplier").value; saveSettings(settings); });
 document.getElementById("maxSlPips").addEventListener("change", ()=>{ settings.maxSlPips=+document.getElementById("maxSlPips").value; saveSettings(settings); });
-document.getElementById("backtestBars").addEventListener("change", ()=>{ settings.backtestBars=+document.getElementById("backtestBars").value; saveSettings(settings); });
 
-/* ============== helpers ============== */
+/* ============== Helpers ============== */
 function pipSize(pair){ if(pair.includes("JPY")) return 0.01; if(pair==="XAU/USD") return 0.01; return 0.0001; }
 function decimals(pair){ return (pair.includes("JPY")||pair==="XAU/USD")?2:5; }
 function formatPrice(v,pair){ return (typeof v === "number" ? v : parseFloat(v)).toFixed(decimals(pair)); }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
 
-/* ============== API fetch with fallback & retry ============== */
-async function fetchWithRetry(url, opts={}, tries=3, wait=800){
+/* ============== Robust fetch with retry & fallback ============== */
+async function fetchWithRetry(url, opts={}, tries=3, wait=700){
   for(let i=0;i<tries;i++){
     try{
       const res = await fetch(url, opts);
@@ -160,13 +167,12 @@ async function fetchWithRetry(url, opts={}, tries=3, wait=800){
       return await res.json();
     }catch(e){
       if(i === tries-1) throw e;
-      await new Promise(r => setTimeout(r, wait * Math.pow(2,i)));
+      await new Promise(r=>setTimeout(r, wait * Math.pow(2,i)));
     }
   }
   throw new Error("fetchWithRetry exhausted");
 }
 
-// Twelve Data price
 async function tdPrice(pair){
   const url = `https://api.twelvedata.com/price?symbol=${encodeURIComponent(pair)}&apikey=${TD_KEY}`;
   try{
@@ -182,12 +188,10 @@ async function tdPrice(pair){
       const fj = await fetchWithRetry(furl, {}, 2, 600);
       if(fj && fj.result) return parseFloat(fj.result);
     }catch(e2){}
-    // final fallback: null
     return null;
   }
 }
 
-// Twelve Data time_series (candles)
 async function tdCandles(pair, bars){
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(pair)}&interval=${INTERVAL}&outputsize=${bars}&format=JSON&apikey=${TD_KEY}`;
   try{
@@ -195,12 +199,14 @@ async function tdCandles(pair, bars){
     if(!j || !j.values) throw new Error("no values");
     return j.values.map(v=>({ time: v.datetime || v.datetime, open:+v.open, high:+v.high, low:+v.low, close:+v.close }));
   }catch(e){
-    // if TD fails for candles, try to fallback for forex using exchangerate.host for closes only (approx)
+    // fallback for forex: approximate timeseries (exchangerate.host timeseries)
     try{
       if(pair==="XAU/USD") throw new Error("no fallback XAU");
       const [base,quote] = pair.split("/");
-      // exchangerate.host doesn't provide candlesticks; return an approximation using latest + tiny noise
-      const conv = await fetchWithRetry(`https://api.exchangerate.host/timeseries?start_date=${recentDateNDays(7)}&end_date=${recentDateNDays(0)}&base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(quote)}`, {}, 2, 800);
+      const end = new Date(); const start = new Date(); start.setDate(start.getDate()-Math.ceil(bars/24*3)); // rough range
+      const s = start.toISOString().split("T")[0]; const e = end.toISOString().split("T")[0];
+      const convUrl = `https://api.exchangerate.host/timeseries?start_date=${s}&end_date=${e}&base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(quote)}`;
+      const conv = await fetchWithRetry(convUrl, {}, 2, 800);
       if(conv && conv.rates){
         const values = Object.keys(conv.rates).sort((a,b)=>b.localeCompare(a)).map(date=>{
           const close = conv.rates[date][quote];
@@ -212,12 +218,8 @@ async function tdCandles(pair, bars){
     throw e;
   }
 }
-function recentDateNDays(n){
-  const d = new Date(); d.setDate(d.getDate()-n);
-  return d.toISOString().split("T")[0];
-}
 
-/* ============== Indicators & patterns ============== */
+/* ============== Indicators & pattern detection ============== */
 function calcEMAFromArr(arr, period){
   if(arr.length < period) return null;
   const rev = arr.slice().reverse();
@@ -327,14 +329,14 @@ async function buildSignalFromCandles(pair, candles){
     score += Math.min(15, Math.round((atrPips / slPips) * 15));
     const internalConfidence = Math.min(95, Math.round(score));
 
-    return { valid:true, pair, candidate, entry, slPrice, tpPrice, slPips, tpPips: Math.round(Math.abs((tpPrice-entry)/psize)), lots, internalConfidence, atr, rsi, ema50, ema200, candles };
+    return { valid:true, pair, candidate, entry, slPrice, tpPrice, slPips, tpPips: Math.round(Math.abs((tpPrice-entry)/psize)), lots, internalConfidence, atr, rsi, ema50, ema200, candles, pattern, struct };
   }catch(e){
     console.error("buildSignalFromCandles error", e);
     return { valid:false, reason:"error" };
   }
 }
 
-/* ============== Backtest (lightweight) ============== */
+/* ============== Backtest (efficient & cached) ============== */
 function simulate(pair, candles){
   const rev = candles.slice().reverse();
   const psize = pipSize(pair);
@@ -386,6 +388,30 @@ function simulate(pair, candles){
   return { total, wins, losses, winRate, avgWin, avgLoss, expectancy };
 }
 
+/* ============== Caching deep history to reduce API calls ============== */
+function cacheKeyFor(pair){ return `fx_candles_${pair.replace("/","_")}_v1`; }
+function cacheMetaKeyFor(pair){ return `fx_candles_meta_${pair.replace("/","_")}_v1`; }
+
+async function getCachedCandles(pair, barsRequested){
+  const meta = JSON.parse(localStorage.getItem(cacheMetaKeyFor(pair))||"null");
+  const cached = JSON.parse(localStorage.getItem(cacheKeyFor(pair))||"null");
+  const now = Date.now();
+  // If we have cached and it's recent (<10 min) and contains enough bars, use it
+  if(cached && meta && (now - meta.fetchedAt < 10*60*1000) && cached.length >= barsRequested) return cached.slice(0, barsRequested);
+  // Otherwise fetch deep bars once and cache
+  try{
+    const deep = Math.min(Math.max(settings.deepBars||300, 200), BACKTEST_LIMIT);
+    const candles = await tdCandles(pair, deep);
+    localStorage.setItem(cacheKeyFor(pair), JSON.stringify(candles));
+    localStorage.setItem(cacheMetaKeyFor(pair), JSON.stringify({ fetchedAt: Date.now(), bars: candles.length }));
+    return candles.slice(0, barsRequested);
+  }catch(e){
+    // fallback to cached partial if available
+    if(cached && cached.length > 0) return cached.slice(0, barsRequested);
+    throw e;
+  }
+}
+
 /* ============== Render & orchestration ============== */
 const signalsContainer = document.getElementById("signalsContainer");
 const lastUpdatedEl = document.getElementById("lastUpdated");
@@ -393,25 +419,31 @@ const backtestSummaryEl = document.getElementById("backtestSummary");
 
 async function manualRefresh(){ await refreshAllSignals(); }
 async function refreshAllSignals(){
-  // update settings
+  // update settings from UI
   settings.accountBalance = +document.getElementById("accountBalance").value || settings.accountBalance;
   settings.riskPercent = +document.getElementById("riskPercent").value || settings.riskPercent;
   settings.slMultiplier = +document.getElementById("slMultiplier").value || settings.slMultiplier;
   settings.maxSlPips = +document.getElementById("maxSlPips").value || settings.maxSlPips;
-  settings.backtestBars = +document.getElementById("backtestBars").value || settings.backtestBars;
+  settings.deepBars = +document.getElementById("deepBars").value || settings.deepBars;
   saveSettings(settings);
 
-  signalsContainer.innerHTML = `<div class="small-muted">Fetching live candles + computing signals... (may take a few seconds)</div>`;
+  signalsContainer.innerHTML = `<div class="small-muted">Fetching candles + computing signals... (may take a few seconds)</div>`;
   const built = [];
   const sums = [];
 
   for(const pair of PAIRS){
     try{
-      // fetch candles (single call used for indicators & backtest)
-      const bars = Math.min(Math.max(settings.backtestBars||100, 50), BACKTEST_LIMIT);
-      let candles;
-      try{ candles = await tdCandles(pair, bars); } catch(e){ candles = null; }
-      if(!candles){
+      const bars = Math.min(Math.max(Math.round(settings.backtestBars||100), 50), BACKTEST_LIMIT);
+      let candles = null;
+      try{
+        // get cached deep candles (reduces API calls)
+        candles = await getCachedCandles(pair, bars);
+      }catch(e){
+        console.warn("deep fetch failed for", pair, e);
+        // fallback: try a small immediate fetch
+        try{ candles = await tdCandles(pair, bars); } catch(e2){ candles = null; }
+      }
+      if(!candles || candles.length < 30){
         built.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data error</div></div>`);
         continue;
       }
@@ -421,28 +453,30 @@ async function refreshAllSignals(){
         built.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">${sig.reason||'No signal'}</div></div>`);
         continue;
       }
-      // run lightweight backtest on those candles
+      // backtest on same candles
       const summary = simulate(pair, candles);
       sums.push({pair,summary});
-      // combine scores: 60% internal + 40% backtest
+      // combined: 60% internal + 40% backtest
       const combined = Math.round((sig.internalConfidence * 0.6) + (summary.winRate * 0.4));
+      const isHQ = combined >= 65 && sig.pattern; // highlight only if combined >=65 and pattern present
       const volClass = sig.atr > (pair==="XAU/USD"?2: pair.includes("JPY")?0.05:0.0007) ? "vol.high" : "vol.mid";
+      const cardClass = isHQ ? "signal-card hq" : "signal-card";
       const html = `
-        <div class="signal-card">
-          <div class="pair"><div><strong>${pair}</strong> <span class="chip">${sig.candidate}</span></div><div class="small-muted">Entry ${formatPrice(sig.entry,pair)}</div></div>
+        <div class="${cardClass}">
+          <div class="pair"><div><strong>${pair}</strong> <span class="chip">${sig.candidate}</span> ${isHQ?`<span style="background:linear-gradient(90deg,#d4af37, #ffd24d); color:#04202a; padding:4px 8px; border-radius:6px; font-weight:800; margin-left:8px">⭐ HQ Trade</span>`:''}</div><div class="small-muted">Entry ${formatPrice(sig.entry,pair)}</div></div>
           <div class="meta">
             <div>SL: <strong>${formatPrice(sig.slPrice,pair)}</strong> (${sig.slPips} pips)</div>
             <div>TP: <strong>${formatPrice(sig.tpPrice,pair)}</strong> (${sig.tpPips} pips)</div>
             <div>Lot: <strong>${sig.lots}</strong></div>
           </div>
-          <div class="${volClass}" style="margin-top:8px">ATR:${sig.atr.toFixed(decimals(pair))} RSI:${Math.round(sig.rsi)}</div>
+          <div class="${volClass}" style="margin-top:8px">ATR:${sig.atr.toFixed(decimals(pair))} RSI:${Math.round(sig.rsi)} Pattern:${sig.pattern||'—'}</div>
           <div style="margin-top:8px" class="small-muted">Internal: ${sig.internalConfidence}% | Backtest Win: ${summary.winRate}%</div>
           <div style="margin-top:6px" class="small-muted">Combined Confidence: ${combined}%</div>
           <div class="conf-bar"><div class="conf-fill" style="width:${combined}%"></div></div>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
             <button onclick='markTaken(${JSON.stringify({pair:sig.pair,candidate:sig.candidate,entry:+sig.entry,sl:+sig.slPrice,tp:+sig.tpPrice,slPips:sig.slPips,tpPips:sig.tpPips,lots:sig.lots})})'>✅ Mark Taken</button>
             <button onclick='openStructure(${JSON.stringify({pair:sig.pair,recent:sig.candles.slice(0,24)})})' class="ghost">Show Structure</button>
-            <button onclick='runBacktest(${JSON.stringify(sig.pair)}, ${settings.backtestBars})' class="ghost">🧪 Backtest</button>
+            <button onclick='runBacktest(${JSON.stringify(sig.pair)}, ${settings.backtestBars||100})' class="ghost">🧪 Backtest</button>
           </div>
         </div>
       `;
@@ -451,8 +485,7 @@ async function refreshAllSignals(){
       console.error("error for pair",pair,err);
       built.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data error</div></div>`);
     }
-    // gentle pause to avoid hitting limits too fast
-    await sleep(200);
+    await sleep(150); // gentle pacing
   }
 
   signalsContainer.innerHTML = built.join("");
@@ -491,17 +524,17 @@ function resolveTrade(index){
   openTracker();
 }
 
-/* ============== Parameter review ============== */
+/* ============== Parameter review (adaptive) ============== */
 function parameterReview(){
   const perf = loadPerf(); const N = 10;
   if(perf.length < N) return;
   const recent = perf.slice(-N); const wins = recent.filter(r=>r.result==="win").length; const winrate = (wins/recent.length)*100;
   if(winrate < 40){
     settings.slMultiplier = +(settings.slMultiplier + 0.15).toFixed(2); saveSettings(settings);
-    alert(`Parameter review: last ${N} winrate ${Math.round(winrate)}% — widened SL multiplier to ${settings.slMultiplier}`);
+    alert(`Parameter review: last ${N} trades winrate ${Math.round(winrate)}% — widened SL multiplier to ${settings.slMultiplier}`);
   } else if(winrate > 70){
     settings.slMultiplier = Math.max(0.6, +(settings.slMultiplier - 0.10).toFixed(2)); saveSettings(settings);
-    alert(`Parameter review: last ${N} winrate ${Math.round(winrate)}% — tightened SL multiplier to ${settings.slMultiplier}`);
+    alert(`Parameter review: last ${N} trades winrate ${Math.round(winrate)}% — tightened SL multiplier to ${settings.slMultiplier}`);
   }
 }
 
@@ -516,7 +549,7 @@ async function runBacktest(pair, bars){
   }catch(e){ console.error(e); alert("Backtest error (see console)"); }
 }
 async function runBacktestForAll(){
-  const bars = Math.min(settings.backtestBars||100, BACKTEST_LIMIT);
+  const bars = Math.min(settings.deepBars||300, BACKTEST_LIMIT);
   const rows = [];
   for(const p of PAIRS){
     try{
@@ -533,13 +566,15 @@ async function runBacktestForAll(){
 
 /* ============== misc ============== */
 function openStructure(obj){ alert(JSON.stringify(obj).slice(0,1500)); }
-function resetLocal(){ if(confirm("Reset local storage?")){ localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(TRACKER_KEY); localStorage.removeItem(PERF_KEY); location.reload(); } }
+function resetLocal(){ if(confirm("Reset local storage?")){ localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(TRACKER_KEY); localStorage.removeItem(PERF_KEY); /* clear caches */ PAIRS.forEach(p=>localStorage.removeItem(cacheKeyFor(p))); location.reload(); } }
 
-/* ============== INIT & AUTO REFRESH ============== */
+/* ============== INIT & AUTO REFRESH / AUTO BACKTEST ============== */
 (async ()=>{
   try{ await refreshAllSignals(); }catch(e){ console.error(e); }
   setInterval(()=>{ refreshAllSignals().catch(e=>console.error(e)); }, AUTO_REFRESH_MINUTES * 60 * 1000);
+  setInterval(()=>{ runBacktestForAll().catch(e=>console.error(e)); }, AUTO_BACKTEST_MINUTES * 60 * 1000);
 })();
+
 </script>
 </body>
 </html>
