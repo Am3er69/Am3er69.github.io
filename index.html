@@ -3,23 +3,28 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Forex Signal Analyzer — Scalp + Intraday + Swing (Single File)</title>
+<title>Forex Signal Studio — Scalp • Intraday • Swing (Dark)</title>
 <style>
-:root{--bg:#071126;--card:#0f2340;--accent:#2ad3a5;--muted:#9fb0c8;--gold:#d4af37;--danger:#ff6b6b}
-body{margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);color:#e6f0fa}
+:root{
+  --bg:#071126; --panel:#0f2340; --muted:#9fb0c8; --accent:#3cbefc; --good:#27ae60; --warn:#f1c40f; --bad:#e74c3c; --gold:#d4af37;
+  --glass: rgba(255,255,255,0.03);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#03051a,#071126);color:#e6f0fa}
 header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.03)}
 h1{margin:0;font-size:18px;color:var(--accent)}
 .controls{display:flex;gap:8px}
 button{background:var(--accent);color:#04202a;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:700}
 button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(255,255,255,0.04)}
 .wrap{padding:16px;display:flex;gap:16px;flex-wrap:wrap}
-.panel{background:var(--card);border-radius:10px;padding:12px;box-shadow:0 6px 20px rgba(2,8,23,0.6)}
-.panel.small{width:320px}
+.panel{background:var(--panel);border-radius:10px;padding:12px;box-shadow:0 6px 20px rgba(2,8,23,0.6);border:1px solid rgba(255,255,255,0.02)}
+.panel.small{width:340px}
 .panel.big{flex:1 1 760px;min-width:320px}
-.small-muted{font-size:12px;color:#9fb0c8}
+.small-muted{font-size:12px;color:var(--muted)}
 .input{background:transparent;border:1px solid rgba(255,255,255,0.05);padding:8px;border-radius:6px;color:#e6f0fa;width:100%}
-.signal-card{border-radius:8px;padding:12px;margin-bottom:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border:1px solid rgba(255,255,255,0.03)}
-.signal-card.hq{box-shadow:0 6px 24px rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.22)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:12px}
+.signal-card{border-radius:10px;padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border:1px solid rgba(255,255,255,0.03)}
+.signal-card.hq{box-shadow:0 8px 30px rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.12)}
 .pair{display:flex;justify-content:space-between;align-items:center}
 .chip{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.02);font-weight:700}
 .meta{font-size:13px;color:var(--muted);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap}
@@ -27,18 +32,19 @@ button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(25
 .vol.mid{background:#f1c40f;color:#201600;padding:4px 8px;border-radius:6px}
 .vol.high{background:#d63c3c;color:#fff;padding:4px 8px;border-radius:6px}
 .conf-bar{height:8px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;margin-top:8px}
-.conf-fill{height:100%;background:linear-gradient(90deg,var(--danger),#ffd24d,var(--gold));width:0%;transition:width 600ms ease}
+.conf-fill{height:100%;background:linear-gradient(90deg,var(--bad),#ffd24d,var(--gold));width:0%;transition:width 600ms ease}
 .footer{padding:12px;color:var(--muted);text-align:center;border-top:1px solid rgba(255,255,255,0.03);margin-top:12px}
 .tag{display:inline-block;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);margin-right:6px;font-size:12px}
 .small-btn{padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:var(--muted);cursor:pointer}
+.badge{padding:4px 8px;border-radius:6px;font-weight:700}
 @media(max-width:900px){.wrap{flex-direction:column}.panel.small{width:100%}.panel.big{width:100%}}
 </style>
 </head>
 <body>
 <header>
-  <h1>Forex Signal Analyzer — Scalp • Intraday • Swing</h1>
+  <h1>Forex Signal Studio — Scalp • Intraday • Swing (Dark)</h1>
   <div class="controls">
-    <button onclick="manualRefresh()">🔁 Refresh</button>
+    <button onclick="manualRefresh()">🔁 Refresh Now</button>
     <button class="ghost" onclick="openTracker()">Tracker</button>
   </div>
 </header>
@@ -46,7 +52,7 @@ button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(25
 <div class="wrap">
   <div class="panel small">
     <div><strong>Settings</strong></div>
-    <div class="small-muted">Balance & risk</div>
+    <div class="small-muted">Account & risk</div>
     <div style="margin-top:8px;">
       <label class="small-muted">Account (USD)</label><br>
       <input id="accountBalance" class="input" type="number" value="1000" min="10" />
@@ -58,46 +64,40 @@ button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(25
 
     <hr style="opacity:0.04;margin:12px 0" />
     <div><strong>Backtest</strong></div>
-    <div class="small-muted">Light, per-signal (30 bars)</div>
+    <div class="small-muted">Kept in code — currently disabled to save API credits</div>
     <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
       <label class="small-muted">Bars</label>
-      <select id="backtestBars" class="input" style="width:110px"><option>25</option><option selected>30</option><option>35</option></select>
+      <select id="backtestBars" class="input" style="width:110px"><option>20</option><option selected>30</option><option>40</option></select>
     </div>
     <div style="margin-top:10px;">
-      <button class="ghost" onclick="runBacktestForAll()">▶ Run Backtest (manual)</button>
+      <button class="ghost" onclick="runBacktestForAll()">▶ Manual Backtest</button>
     </div>
 
     <hr style="opacity:0.04;margin:12px 0" />
-    <div><strong>Parameters</strong></div>
-    <div class="small-muted">SL multiplier & Max SL</div>
-    <div style="margin-top:8px;">
-      <label class="small-muted">SL multiplier</label><br>
-      <input id="slMultiplier" class="input" type="number" value="1.0" step="0.05" />
-    </div>
-    <div style="margin-top:8px;">
-      <label class="small-muted">Max SL (pips, majors)</label><br>
-      <input id="maxSlPips" class="input" type="number" value="30" />
-    </div>
+    <div><strong>Indicators & filters</strong></div>
+    <div class="small-muted" style="margin-top:8px">EMA (20,50) • RSI(14) • MACD(12,26,9) • ATR(14)</div>
 
-    <div style="margin-top:12px;">
-      <button onclick="resetLocal()" class="ghost">Reset Local Data</button>
-    </div>
-    <div style="margin-top:12px;" class="small-muted">API delay: <span id="apiDelayLabel">1000ms</span></div>
+    <hr style="opacity:0.04;margin:12px 0" />
+    <div><strong>Other</strong></div>
+    <div style="margin-top:8px;"><label class="small-muted">SL multiplier</label><br><input id="slMultiplier" class="input" type="number" value="1.0" step="0.05" /></div>
+    <div style="margin-top:8px;"><label class="small-muted">Max SL (pips)</label><br><input id="maxSlPips" class="input" type="number" value="50" /></div>
+    <div style="margin-top:10px;"><button onclick="resetLocal()" class="ghost">Reset Local Data</button></div>
+    <div style="margin-top:12px;" class="small-muted">Auto-refresh: <span id="refreshLabel">5s</span> • API delay: <span id="apiDelayLabel">1000ms</span></div>
   </div>
 
   <div class="panel big">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><strong>Signals — all pairs</strong><div class="small-muted">Scalp (15m) • Intraday (1h) • Swing (1h/4h)</div></div>
+      <div><strong>Signals — every card is one signal</strong><div class="small-muted">Scalp (M15) | Intraday (H1) | Swing (H1+)</div></div>
       <div class="small-muted" id="lastUpdated">—</div>
     </div>
 
-    <div id="signalsContainer" style="margin-top:12px"></div>
+    <div id="signalsContainer" class="grid"></div>
     <div id="backtestSummary" class="small-muted" style="margin-top:12px"></div>
   </div>
 </div>
 
 <!-- Tracker modal -->
-<div id="trackerModal" style="display:none;position:fixed;inset:8% 6% 8% 6%;background:var(--card);border-radius:8px;padding:12px;z-index:99;overflow:auto">
+<div id="trackerModal" style="display:none;position:fixed;inset:8% 6% 8% 6%;background:var(--panel);border-radius:8px;padding:12px;z-index:99;overflow:auto">
   <div style="display:flex;justify-content:space-between;align-items:center">
     <strong>Trade Tracker (local)</strong>
     <div><button class="ghost" onclick="closeTracker()">Close</button></div>
@@ -106,45 +106,42 @@ button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(25
   <div style="margin-top:10px"><button onclick="clearTracker()" class="ghost">Clear Tracker</button></div>
 </div>
 
-<footer class="footer">Configured for API efficiency: cached candles, adaptive throttling, and selective backtest for high-confidence signals. Test on demo first.</footer>
+<footer class="footer">Kept light for Twelve Data free tier — scalp + intraday + swing. Use demo account first. Backtest disabled by default.</footer>
 
 <script>
-/* ================== CONFIG ================== */
-// Your Twelve Data key (replace if needed)
+/* ================== USER TUNABLE CONFIG ================== */
+// Put your Twelve Data key here (replace if desired)
 const TD_KEY = "318e2543fba14c57836adc5ce228ee7e";
 
-// Pairs list (you asked to remove USD/NZD and add EUR/JPY, GBP/JPY, EUR/GBP, GBP/AUD)
+// Pairs (majors + crosses + gold)
 const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY","GBP/JPY","EUR/GBP","GBP/AUD","XAU/USD"];
 
-// Intervals & limits
+// Intervals and settings
 const INTERVAL_MAIN = "1h";
 const INTERVAL_SCALP = "15min";
-const BACKTEST_LIMIT = 30;
-const MIN_ENTRY_PIPS = 5;   // smallest entry offset for majors
-const MAX_ENTRY_PIPS = 15;  // closest intraday entry max
+const REFRESH_INTERVAL_MS = 5000; // you requested 5 seconds
+const API_DELAY_BASE_MS = 1000;   // pacing between pair requests (adaptive)
+let API_DELAY_MS = API_DELAY_BASE_MS;
+const BACKTEST_ENABLED = false;   // <<-- KEEP FALSE to save API credits; toggle when ready
+const BACKTEST_LIMIT = 30; // bars used for manual backtest
 const RR_TARGET = 2.0;
 const SPREAD_BUFFER_PIPS_MAJOR = 0.5;
 const SPREAD_BUFFER_PIPS_XAU = 15;
-const CACHE_TTL_MAIN_MS = 20 * 60 * 1000; // 20 minutes for 1H candles
-const CACHE_TTL_SCALP_MS = 5 * 60 * 1000; // 5 minutes for 15m scalp candles
-const AUTO_REFRESH_MINUTES = 5;
+const CACHE_TTL_MAIN_MS = 20 * 60 * 1000; // 20 minutes
+const CACHE_TTL_SCALP_MS = 5 * 60 * 1000; // 5 minutes
 
-// Local storage keys
-const SETTINGS_KEY = "fx_settings_v2";
-const TRACKER_KEY = "fx_tracker_v2";
-const BACKTEST_CACHE_KEY = "fx_bt_v2";
+/* ================== SETTINGS state & UI hookup ================== */
+const SETTINGS_KEY = "fx_v3_settings";
+const TRACKER_KEY = "fx_v3_tracker";
+const BACKTEST_CACHE_KEY = "fx_v3_bt";
 
-/* ================== STATE ================== */
 let settings = loadSettings();
-let API_DELAY_MS = 1000; // default 1000ms between pair fetches
-let recentErrors = 0;
-
-/* ================== UI hookup ================== */
 document.getElementById("accountBalance").value = settings.accountBalance;
 document.getElementById("riskPercent").value = settings.riskPercent;
 document.getElementById("slMultiplier").value = settings.slMultiplier;
 document.getElementById("maxSlPips").value = settings.maxSlPips;
 document.getElementById("backtestBars").value = settings.backtestBars;
+document.getElementById("refreshLabel").textContent = (REFRESH_INTERVAL_MS/1000) + "s";
 document.getElementById("apiDelayLabel").textContent = API_DELAY_MS + "ms";
 
 ["accountBalance","riskPercent","slMultiplier","maxSlPips","backtestBars"].forEach(id=>{
@@ -158,20 +155,22 @@ document.getElementById("apiDelayLabel").textContent = API_DELAY_MS + "ms";
   });
 });
 
-/* ================== HELPERS: storage, sleep, pip etc ================== */
-function loadSettings(){ return Object.assign({accountBalance:1000,riskPercent:1,slMultiplier:1.0,maxSlPips:30,backtestBars:30}, JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}")); }
+/* ================== UTILS & STORAGE ================== */
+function loadSettings(){ return Object.assign({accountBalance:1000,riskPercent:1,slMultiplier:1.0,maxSlPips:50,backtestBars:30}, JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}")); }
 function saveSettings(s){ localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
 function loadTracker(){ return JSON.parse(localStorage.getItem(TRACKER_KEY)||"[]"); }
 function saveTracker(a){ localStorage.setItem(TRACKER_KEY, JSON.stringify(a)); }
-
 function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 function pipSize(pair){ if(pair.includes("JPY")) return 0.01; if(pair==="XAU/USD") return 0.01; return 0.0001; }
 function decimals(pair){ return (pair.includes("JPY")||pair==="XAU/USD")?2:5; }
 function formatPrice(v,pair){ return (typeof v==="number"?v:parseFloat(v)).toFixed(decimals(pair)); }
-function noteFetchError(){ recentErrors++; if(recentErrors>=3){ API_DELAY_MS = 2000; document.getElementById("apiDelayLabel").textContent = API_DELAY_MS + "ms"; console.warn("API errors rising, increased delay to", API_DELAY_MS); } }
-function noteFetchSuccess(){ if(recentErrors>0) recentErrors--; if(recentErrors<=0){ recentErrors=0; API_DELAY_MS = 1000; document.getElementById("apiDelayLabel").textContent = API_DELAY_MS + "ms"; } }
 
-/* ================== FETCH with retry & caching (localStorage) ================== */
+/* simple adaptive throttling */
+let recentErrors = 0;
+function noteFetchError(){ recentErrors++; if(recentErrors>=3){ API_DELAY_MS = API_DELAY_BASE_MS * 2; document.getElementById("apiDelayLabel").textContent = API_DELAY_MS + "ms"; console.warn("API errors increasing: raised delay"); } }
+function noteFetchSuccess(){ if(recentErrors>0) recentErrors--; if(recentErrors<=0){ recentErrors=0; API_DELAY_MS = API_DELAY_BASE_MS; document.getElementById("apiDelayLabel").textContent = API_DELAY_MS + "ms"; } }
+
+/* ================== FETCH + CACHE helpers ================== */
 async function fetchWithRetry(url, tries=2, wait=600){
   for(let i=0;i<tries;i++){
     try{
@@ -186,22 +185,20 @@ async function fetchWithRetry(url, tries=2, wait=600){
   }
 }
 
+/* cache keys per pair & interval */
 function cacheKey(pair, interval){ return `fx_cache_${pair.replace("/","_")}_${interval}`; }
-function cacheMetaKey(pair, interval){ return `${cacheKey(pair,interval)}_meta`; }
+function cacheMeta(pair, interval){ return `${cacheKey(pair,interval)}_meta`; }
 
 async function tdCandlesCached(pair, bars, interval){
-  const key = cacheKey(pair, interval);
-  const metaKey = cacheMetaKey(pair, interval);
+  const key = cacheKey(pair, interval), metaKey = cacheMeta(pair, interval);
   const meta = JSON.parse(localStorage.getItem(metaKey) || "null");
   const cached = JSON.parse(localStorage.getItem(key) || "null");
   const now = Date.now();
   const ttl = (interval === INTERVAL_SCALP) ? CACHE_TTL_SCALP_MS : CACHE_TTL_MAIN_MS;
 
-  if(cached && meta && (now - meta.fetchedAt < ttl) && cached.length >= bars){
-    return cached.slice(0, bars);
-  }
+  if(cached && meta && (now - meta.fetchedAt < ttl) && cached.length >= bars) return cached.slice(0,bars);
 
-  // request
+  // fetch
   try{
     const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(pair)}&interval=${interval}&outputsize=${bars}&format=JSON&apikey=${TD_KEY}`;
     const j = await fetchWithRetry(url, 2, 600);
@@ -210,54 +207,73 @@ async function tdCandlesCached(pair, bars, interval){
       localStorage.setItem(key, JSON.stringify(values));
       localStorage.setItem(metaKey, JSON.stringify({ fetchedAt: Date.now(), bars: values.length }));
       noteFetchSuccess();
-      return values.slice(0, bars);
+      return values.slice(0,bars);
     } else {
       noteFetchError();
     }
   }catch(e){
-    console.warn("tdCandlesCached fetch failed", pair, interval, e.message);
+    console.warn("fetch failed", pair, interval, e.message);
     noteFetchError();
   }
 
-  // fallback to cached if available
   if(cached && cached.length>0) return cached.slice(0,bars);
   return null;
 }
 
-/* ================== INDICATORS & PATTERNS (kept and tuned) ================== */
-function calcEMAFromArr(arr, period){
+/* ================== INDICATORS: EMA, RSI, MACD, ATR ================== */
+function calcEMA(arr, period){
   if(!arr || arr.length < period) return null;
-  const rev = arr.slice().reverse();
+  // compute on array as provided (assume arr[0] = latest)
+  const rev = arr.slice().reverse(); // old->new
   let ema = rev.slice(0,period).reduce((a,b)=>a+b,0)/period;
   const k = 2/(period+1);
   for(let i=period;i<rev.length;i++) ema = (rev[i] - ema) * k + ema;
   return ema;
-}
-function calcATR(candles, period=14){
-  if(!candles || candles.length <= period) return 0;
-  let sum=0;
-  for(let i=0;i<period;i++){
-    const hi=candles[i].high, lo=candles[i].low, prev=(i+1<candles.length)?candles[i+1].close:candles[i].close;
-    const tr = Math.max(hi-lo, Math.abs(hi-prev), Math.abs(lo-prev));
-    sum += tr;
-  }
-  return sum/period;
 }
 function calcRSI(candles, period=14){
   if(!candles || candles.length <= period) return 50;
   let gains=0, losses=0;
   for(let i=0;i<period;i++){
     const diff = candles[i].close - (candles[i+1]?candles[i+1].close:candles[i].close);
-    if(diff>0) gains+=diff; else losses -= diff;
+    if(diff>0) gains += diff; else losses -= diff;
   }
-  if(losses===0) return 100;
-  const avgGain=gains/period, avgLoss=losses/period;
+  if(losses === 0) return 100;
+  const avgGain = gains/period, avgLoss = losses/period;
   const rs = avgGain/avgLoss;
   return 100 - (100/(1+rs));
 }
+function calcATR(candles, period=14){
+  if(!candles || candles.length <= period) return 0;
+  let sum = 0;
+  for(let i=0;i<period;i++){
+    const hi = candles[i].high, lo = candles[i].low, prev = (i+1<candles.length)?candles[i+1].close:candles[i].close;
+    const tr = Math.max(hi-lo, Math.abs(hi-prev), Math.abs(lo-prev));
+    sum += tr;
+  }
+  return sum/period;
+}
+function calcMACD(closes, fast=12, slow=26, signal=9){
+  if(!closes || closes.length < slow+signal) return { macd:0, signal:0, hist:0 };
+  const emaFast = calcEMA(closes, fast);
+  const emaSlow = calcEMA(closes, slow);
+  if(emaFast === null || emaSlow === null) return { macd:0, signal:0, hist:0 };
+  // rough MACD line: emaFast - emaSlow
+  const macdLine = emaFast - emaSlow;
+  // build macd series for signal smoothing: compute macd for past (slow+signal) windows naive way
+  const macdSeries = [];
+  for(let i=0;i<slow+signal;i++){
+    const window = closes.slice(i); // approximate
+    const a = calcEMA(window, fast); const b = calcEMA(window, slow);
+    if(a === null || b === null) macdSeries.push(0); else macdSeries.push(a-b);
+  }
+  const signalLine = calcEMA(macdSeries, signal) || 0;
+  return { macd: macdLine, signal: signalLine, hist: macdLine - signalLine };
+}
+
+/* ================== Pattern detection (preserve original) ================== */
 function detectCandles(candles){
   if(!candles || candles.length < 2) return null;
-  const curr=candles[0], prev=candles[1];
+  const curr = candles[0], prev = candles[1];
   const currBody = Math.abs(curr.close - curr.open);
   const currWickTop = curr.high - Math.max(curr.open,curr.close);
   const currWickBottom = Math.min(curr.open,curr.close) - curr.low;
@@ -274,46 +290,52 @@ function recentStructure(candles, lookback=24){
   return { resistance: Math.max(...highs), support: Math.min(...lows) };
 }
 
-/* ================== CORE SIGNAL BUILD (main logic preserved with tweaks) ================== */
+/* ================== BUILD SIGNAL (main logic preserved + indicators) ================== */
 function buildFromCandles(pair, candles, settingsLocal){
   try{
     if(!candles || candles.length < 20) return { valid:false, reason:"Insufficient data" };
     const currentPrice = candles[0].close;
     const closes = candles.map(c=>c.close);
-    const ema50 = calcEMAFromArr(closes,50) || currentPrice;
-    const ema200 = calcEMAFromArr(closes,200) || currentPrice;
+    const ema20 = calcEMA(closes,20) || currentPrice;
+    const ema50 = calcEMA(closes,50) || currentPrice;
     const rsi = calcRSI(candles,14);
     const atr = calcATR(candles,14);
+    const macdObj = calcMACD(closes,12,26,9);
     const pattern = detectCandles(candles);
     const struct = recentStructure(candles,24);
-    const trend = ema50 > ema200 ? "up" : "down";
+    const trend = ema20 > ema50 ? "up" : "down";
 
     let candidate = null;
-    if(trend==="up" && rsi < 60){
-      if(pattern==="bullish_engulfing" || pattern==="bullish_pin" || rsi < 50) candidate = "BUY";
+    // price action + indicator filter
+    if(trend==="up" && rsi < 65 && macdObj.hist >= 0){
+      if(pattern==="bullish_engulfing" || pattern==="bullish_pin" || rsi < 55) candidate = "BUY";
     }
-    if(trend==="down" && rsi > 40){
-      if(pattern==="bearish_engulfing" || pattern==="bearish_pin" || rsi > 50) candidate = "SELL";
+    if(trend==="down" && rsi > 35 && macdObj.hist <= 0){
+      if(pattern==="bearish_engulfing" || pattern==="bearish_pin" || rsi > 45) candidate = "SELL";
+    }
+
+    // fallback: weaker confluence — allow if RSI extreme + MACD supportive
+    if(!candidate){
+      if(rsi < 30 && macdObj.hist > 0) candidate = "BUY";
+      if(rsi > 70 && macdObj.hist < 0) candidate = "SELL";
     }
     if(!candidate) return { valid:false, reason:"No confluence" };
 
-    // intraday entry offset (keep entries near price 5-15 pips for majors, 20-40 for gold)
+    // choose intraday vs swing bias: mark isIntraday if entry offset small
     const psize = pipSize(pair);
     const intradayMin = (pair==="XAU/USD") ? 20 : 5;
     const intradayMax = (pair==="XAU/USD") ? 40 : 10;
     const entryOffsetPips = intradayMin + Math.floor(Math.random() * (intradayMax - intradayMin + 1));
     const entry = candidate==="BUY" ? currentPrice - entryOffsetPips * psize : currentPrice + entryOffsetPips * psize;
 
-    // dynamic SL (ATR * multiplier) and clamp to sensible bounds
+    // SL from ATR * multiplier and clamp
     const atrPips = Math.max(1, Math.round(atr / psize));
     let slPips = Math.round(atrPips * (settingsLocal.slMultiplier || 1.0));
     if(slPips < intradayMin) slPips = intradayMin;
-    if(slPips > (settingsLocal.maxSlPips || 60)) slPips = settingsLocal.maxSlPips || 60;
+    if(slPips > (settingsLocal.maxSlPips || 100)) slPips = settingsLocal.maxSlPips || 100;
     if(pair==="XAU/USD" && slPips < 60) slPips = 60;
 
-    const spreadBufPips = (pair==="XAU/USD") ? SPREAD_BUFFER_PIPS_XAU : SPREAD_BUFFER_PIPS_MAJOR;
-    const spreadBuf = spreadBufPips * psize;
-
+    const spreadBuf = (pair==="XAU/USD") ? SPREAD_BUFFER_PIPS_XAU : SPREAD_BUFFER_PIPS_MAJOR;
     const slPrice = candidate==="BUY" ? entry - slPips*psize - spreadBuf*psize : entry + slPips*psize + spreadBuf*psize;
     const tpPrice = candidate==="BUY" ? entry + slPips*psize*RR_TARGET : entry - slPips*psize*RR_TARGET;
 
@@ -322,25 +344,24 @@ function buildFromCandles(pair, candles, settingsLocal){
     const pipDollar = (pair==="XAU/USD") ? 1.0 : (pair.includes("JPY") ? 9.0 : 10.0);
     const lots = Math.max(0.01, Math.round((riskUSD / (slPips * pipDollar)) * 100) / 100);
 
-    // confidence scoring (preserve previous idea)
+    // confidence scoring: trend, pattern, indicators, structure proximity
     let score = 0;
-    score += ((trend==="up" && candidate==="BUY") || (trend==="down" && candidate==="SELL")) ? 25 : 0;
-    score += pattern ? 20 : 0;
+    score += (trend==="up" && candidate==="BUY") || (trend==="down" && candidate==="SELL") ? 25 : 0;
+    score += pattern ? 18 : 0;
     score += Math.max(0, 15 - Math.abs(rsi - (candidate==="BUY"?45:55)));
     const structDist = candidate==="BUY" ? Math.abs(entry - struct.support) : Math.abs(struct.resistance - entry);
     const structPips = Math.round(structDist / psize);
     score += (structPips <= slPips) ? 10 : 0;
-    score += Math.min(15, Math.round((atrPips / slPips) * 15));
+    score += (Math.abs(macdObj.hist) > 0.0001) ? 10 : 0; // momentum bonus
+    score += Math.min(12, Math.round((atrPips / slPips) * 12));
     const internalConfidence = Math.min(95, Math.round(score));
-
     const isIntraday = entryOffsetPips <= intradayMax;
 
     return {
-      valid:true,
-      pair, candidate,
-      entry, slPrice, tpPrice,
-      slPips, tpPips: Math.round(Math.abs((tpPrice - entry) / psize)),
-      lots, internalConfidence, atr, rsi, ema50, ema200, pattern, struct, lastCandleTime: candles[0].time, isIntraday
+      valid:true, pair, candidate,
+      type: isIntraday ? "intraday" : "swing",
+      entry, slPrice, tpPrice, slPips, tpPips: Math.round(Math.abs((tpPrice - entry) / psize)),
+      lots, internalConfidence, atr, rsi, ema20, ema50, macd: macdObj, pattern, struct, lastCandleTime: candles[0].time
     };
   }catch(e){
     console.error("buildFromCandles error", e);
@@ -348,67 +369,68 @@ function buildFromCandles(pair, candles, settingsLocal){
   }
 }
 
-/* ================== SCALP ANALYSIS (quick 15min pass) ================== */
+/* ================== SCALP (15m) light pass ================== */
 async function analyzeScalp(pair){
   const candles = await tdCandlesCached(pair, 30, INTERVAL_SCALP).catch(()=>null);
-  if(!candles || candles.length < 15) return null;
+  if(!candles || candles.length < 12) return null;
   const psize = pipSize(pair);
   const atr = calcATR(candles,14);
   const rsi = calcRSI(candles,7);
   const closes = candles.map(c=>c.close);
-  const ema9 = calcEMAFromArr(closes,9) || closes[0];
-  const ema21 = calcEMAFromArr(closes,21) || closes[0];
+  const ema9 = calcEMA(closes,9) || closes[0];
+  const ema21 = calcEMA(closes,21) || closes[0];
+  const macd = calcMACD(closes,12,26,9);
   const last = candles[0].close;
 
-  // simple scalp rules
-  if(ema9 > ema21 && rsi < 65 && last > ema9){
+  // tight scalp rules: EMA9/21 cross + RSI and MACD momentum
+  if(ema9 > ema21 && rsi < 65 && macd.hist >= 0){
     const entry = last;
     const slPips = Math.max(4, Math.round((atr/psize) * 0.9));
-    const tpPips = Math.max(6, Math.round(slPips * 1.6));
+    const tpPips = Math.max(6, Math.round(slPips * 1.5));
     const spreadBuf = (pair==="XAU/USD")? SPREAD_BUFFER_PIPS_XAU : SPREAD_BUFFER_PIPS_MAJOR;
     const slPrice = entry - slPips*psize - spreadBuf*psize;
     const tpPrice = entry + tpPips*psize;
-    return { pair, type:"scalp", side:"BUY", entry, slPrice, tpPrice, slPips, tpPips, atr, rsi, ema9, ema21 };
+    return { pair, type:"scalp", side:"BUY", entry, slPrice, tpPrice, slPips, tpPips, atr, rsi, ema9, ema21, macd };
   }
-  if(ema9 < ema21 && rsi > 35 && last < ema9){
+  if(ema9 < ema21 && rsi > 35 && macd.hist <= 0){
     const entry = last;
     const slPips = Math.max(4, Math.round((atr/psize) * 0.9));
-    const tpPips = Math.max(6, Math.round(slPips * 1.6));
+    const tpPips = Math.max(6, Math.round(slPips * 1.5));
     const spreadBuf = (pair==="XAU/USD")? SPREAD_BUFFER_PIPS_XAU : SPREAD_BUFFER_PIPS_MAJOR;
     const slPrice = entry + slPips*psize + spreadBuf*psize;
     const tpPrice = entry - tpPips*psize;
-    return { pair, type:"scalp", side:"SELL", entry, slPrice, tpPrice, slPips, tpPips, atr, rsi, ema9, ema21 };
+    return { pair, type:"scalp", side:"SELL", entry, slPrice, tpPrice, slPips, tpPips, atr, rsi, ema9, ema21, macd };
   }
   return null;
 }
 
-/* ================== LIGHT BACKTEST (simulate) ================== */
-function simulate(pair, candles, settingsLocal){
+/* ================== LIGHT SIMULATE (backtest) - kept but run only if BACKTEST_ENABLED true or manual */
+function simulate(pair, candles){
   if(!candles || candles.length < 20) return { total:0, wins:0, losses:0, winRate:0 };
   const rev = candles.slice().reverse();
   const psize = pipSize(pair);
   const results = [];
   for(let i=15;i<rev.length-1;i++){
     const window = rev.slice(0,i+1).reverse();
-    const ema50 = calcEMAFromArr(window.map(c=>c.close),50) || window[0].close;
-    const ema200 = calcEMAFromArr(window.map(c=>c.close),200) || window[0].close;
+    const ema20 = calcEMA(window.map(c=>c.close),20);
+    const ema50 = calcEMA(window.map(c=>c.close),50);
     const rsi = calcRSI(window,14);
     let sumDiff=0; for(let t=0;t<Math.min(5,window.length-1);t++) sumDiff += (window[t].close - (window[t+1]?window[t+1].close:window[t].close));
     const trendDir = sumDiff>0 ? "bull" : sumDiff<0 ? "bear" : "neutral";
     let candidate=null;
-    if(trendDir==="bull" && window[0].close > ema200 && rsi < 60) candidate="BUY";
-    if(trendDir==="bear" && window[0].close < ema200 && rsi > 40) candidate="SELL";
+    if(trendDir==="bull" && window[0].close > (ema50||0) && rsi < 60) candidate="BUY";
+    if(trendDir==="bear" && window[0].close < (ema50||0) && rsi > 40) candidate="SELL";
     if(!candidate) continue;
     const atr = calcATR(window,14);
     const atrPips = Math.max(1, Math.round(atr/psize));
-    let slPips = Math.round(atrPips * (settingsLocal.slMultiplier || 1.0));
+    let slPips = Math.round(atrPips * settings.slMultiplier);
     if(slPips < 5) slPips = 5;
-    if(slPips > settingsLocal.maxSlPips) slPips = settingsLocal.maxSlPips;
+    if(slPips > settings.maxSlPips) slPips = settings.maxSlPips;
     let entry = candidate==="BUY" ? window[0].close - 5*psize : window[0].close + 5*psize;
     const spreadBuf = (pair==="XAU/USD") ? SPREAD_BUFFER_PIPS_XAU * psize : SPREAD_BUFFER_PIPS_MAJOR * psize;
     let slPrice = candidate==="BUY" ? entry - slPips*psize - spreadBuf : entry + slPips*psize + spreadBuf;
     let tpPrice = candidate==="BUY" ? entry + slPips*psize*RR_TARGET : entry - slPips*psize*RR_TARGET;
-    let hit = null;
+    let hit=null;
     for(let k=i+1;k<rev.length;k++){
       const h = rev[k].high, l = rev[k].low;
       if(candidate==="BUY"){
@@ -428,25 +450,38 @@ function simulate(pair, candles, settingsLocal){
   return { total, wins, losses, winRate };
 }
 
-/* ================== UI render helpers ================== */
-function renderScalpCard(s){
-  const conf = 55 + Math.min(35, s.rsi ? (s.side==="BUY"? (65 - s.rsi) : (s.rsi - 35)) : 0);
-  const volClass = s.atr > (s.pair==="XAU/USD"?2: s.pair.includes("JPY")?0.05:0.0007) ? "vol.high" : "vol.mid";
+/* ================== UI rendering helpers ================== */
+function renderSignalCard(sig){
+  // Create card HTML for scalp/intraday/swing signals
+  const isScalp = sig.type === "scalp";
+  const label = isScalp ? "SCALP" : (sig.type === "intraday" ? "INTRADAY" : "SWING");
+  const sideColor = (sig.candidate || sig.side) === "BUY" || (sig.side === "BUY") ? "var(--good)" : "var(--bad)";
+  const conf = sig.internalConfidence || (sig.rsi? (55 + Math.min(35, sig.type==="scalp"? (65 - sig.rsi) : (sig.internalConfidence || 0))) : 60);
+  const volClass = sig.atr > (sig.pair==="XAU/USD"?2: sig.pair.includes("JPY")?0.05:0.0007) ? "vol.high" : "vol.mid";
+  const hq = (conf >= 75) || false;
+  const cardClass = hq ? "signal-card hq" : "signal-card";
   return `
-    <div class="signal-card">
-      <div class="pair"><div><strong>${s.pair}</strong> <span class="chip">SCALP</span> <span class="tag">${s.side}</span></div><div class="small-muted">Entry ${formatPrice(s.entry,s.pair)}</div></div>
-      <div class="meta"><div>SL: <strong>${formatPrice(s.slPrice,s.pair)}</strong> (${s.slPips} pips)</div><div>TP: <strong>${formatPrice(s.tpPrice,s.pair)}</strong> (${s.tpPips} pips)</div></div>
-      <div class="${volClass}" style="margin-top:8px">ATR:${s.atr.toFixed(decimals(s.pair))} RSI:${Math.round(s.rsi)}</div>
-      <div style="margin-top:8px" class="small-muted">Scalp confidence: ${Math.round(conf)}%</div>
-      <div class="conf-bar"><div class="conf-fill" style="width:${Math.round(conf)}%"></div></div>
-      <div style="margin-top:8px;display:flex;gap:8px">
-        <button onclick='markTaken(${JSON.stringify({pair:s.pair,side:s.side,entry:+s.entry,sl:+s.slPrice,tp:+s.tpPrice,slPips:s.slPips,tpPips:s.tpPips,lots:0.01})})'>✅ Mark Taken</button>
+    <div class="${cardClass}">
+      <div class="pair"><div><strong>${sig.pair}</strong> <span class="chip">${label}</span> <span class="tag" style="background:${sideColor};color:#04202a;margin-left:8px">${sig.candidate || sig.side}</span></div>
+      <div class="small-muted">Entry ${formatPrice(sig.entry,sig.pair)}</div></div>
+      <div class="meta">
+        <div>SL: <strong>${formatPrice(sig.slPrice,sig.pair)}</strong> (${sig.slPips || sig.slPips} pips)</div>
+        <div>TP: <strong>${formatPrice(sig.tpPrice,sig.pair)}</strong> (${sig.tpPips || sig.tpPips} pips)</div>
+        <div>Lot: <strong>${sig.lots || (sig.type==="scalp"?0.01:sig.lots)}</strong></div>
+      </div>
+      <div class="${volClass}" style="margin-top:8px">ATR:${(sig.atr||0).toFixed(decimals(sig.pair))} RSI:${Math.round(sig.rsi||0)} Pattern:${sig.pattern||'—'}</div>
+      <div style="margin-top:8px" class="small-muted">Confidence: ${conf}%</div>
+      <div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick='markTaken(${JSON.stringify({pair:sig.pair,side:(sig.candidate||sig.side),entry:+sig.entry,sl:+sig.slPrice,tp:+sig.tpPrice,slPips: sig.slPips || sig.slPips, tpPips: sig.tpPips || sig.tpPips, lots: sig.lots || 0.01})})'>✅ Mark Taken</button>
+        <button class="ghost" onclick='openStructure(${JSON.stringify({pair:sig.pair,recent:sig.pattern?sig.struct:[]})})'>Show Structure</button>
+        <button class="ghost" onclick='runBacktest(${JSON.stringify(sig.pair)}, ${settings.backtestBars})'>🧪 Backtest</button>
       </div>
     </div>
   `;
 }
 
-/* ================== MAIN loop & rendering ================== */
+/* ================== MAIN loop ================== */
 const signalsContainer = document.getElementById("signalsContainer");
 const lastUpdatedEl = document.getElementById("lastUpdated");
 const backtestSummaryEl = document.getElementById("backtestSummary");
@@ -460,89 +495,72 @@ async function refreshAllSignals(){
   saveSettings(settings);
 
   signalsContainer.innerHTML = `<div class="small-muted">Fetching (cached) candles & computing signals... please wait</div>`;
-  const built = [];
+  const cards = [];
   const summaryRows = [];
 
   for(const pair of PAIRS){
     try{
-      // scalp first (fast 15m) — no heavy backtest here
+      // SCALP pass - fast
       let scalp = null;
       try{ scalp = await analyzeScalp(pair); } catch(e){ scalp = null; }
-      if(scalp) built.push(renderScalpCard(scalp));
+      if(scalp){
+        // small confidence calculation for scalp
+        scalp.internalConfidence = Math.min(95, 55 + Math.round((65 - scalp.rsi) || 0));
+        scalp.lots = 0.01;
+        cards.push(renderSignalCard(scalp));
+      }
 
-      // gentle pacing to protect API
+      // pace
       await sleep(API_DELAY_MS);
 
-      // main 1h candles (cached)
+      // main 1H candles
       const bars = Math.min(Math.max(settings.backtestBars || BACKTEST_LIMIT, 20), BACKTEST_LIMIT);
       const candles = await tdCandlesCached(pair, bars, INTERVAL_MAIN).catch(()=>null);
       if(!candles || candles.length < 20){
-        built.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data error (try refresh)</div></div>`);
+        cards.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data temporarily unavailable</div></div>`);
         continue;
       }
 
       const sig = buildFromCandles(pair, candles, settings);
       if(!sig.valid){
-        built.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">${sig.reason || 'No signal'}</div></div>`);
+        cards.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">${sig.reason||'No signal'}</div></div>`);
         continue;
       }
 
-      // run backtest only for high internalConfidence
+      // optionally run light backtest only when BACKTEST_ENABLED (keeps API low otherwise rely on cached)
       let bt = null;
-      if(sig.internalConfidence >= 60){
-        const existing = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_")) || "null");
+      if(BACKTEST_ENABLED && sig.internalConfidence >= 60){
+        const cachedBt = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_")) || "null");
         const lastTimeKey = "fx_lasttime_" + pair.replace("/","_");
         const storedLast = localStorage.getItem(lastTimeKey);
-        if(!existing || storedLast !== sig.lastCandleTime){
-          // lightweight simulate on cached candles
-          const summary = simulate(pair, candles, settings);
+        if(!cachedBt || storedLast !== sig.lastCandleTime){
+          const summary = simulate(pair, candles);
           bt = summary;
           localStorage.setItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_"), JSON.stringify(summary));
           localStorage.setItem(lastTimeKey, sig.lastCandleTime);
-        } else {
-          bt = existing;
-        }
+        } else bt = cachedBt;
       } else {
         const maybe = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_")) || "null");
         if(maybe) bt = maybe;
       }
 
-      const combined = bt && bt.total > 0 ? Math.round((sig.internalConfidence * 0.6) + (bt.winRate * 0.4)) : sig.internalConfidence;
-      const isHQ = combined >= 65 && !!sig.pattern;
-      const volClass = sig.atr > (pair==="XAU/USD" ? 2 : pair.includes("JPY") ? 0.05 : 0.0007) ? "vol.high" : "vol.mid";
-      const cardClass = isHQ ? "signal-card hq" : "signal-card";
+      // combined confidence (use backtest if available)
+      const combined = bt && bt.total>0 ? Math.round((sig.internalConfidence * 0.6) + (bt.winRate * 0.4)) : sig.internalConfidence;
+      sig.internalConfidence = combined; // show combined on UI
+      sig.lots = sig.lots || Math.max(0.01, Math.round(( (settings.accountBalance * (settings.riskPercent||1)/100) / ((sig.slPips||sig.slPips) * (sig.pair==="XAU/USD"?1.0:(sig.pair.includes("JPY")?9:10)) ))*100)/100);
 
-      const html = `
-        <div class="${cardClass}">
-          <div class="pair"><div><strong>${pair}</strong> <span class="chip">${sig.candidate}</span> ${isHQ?`<span style="background:linear-gradient(90deg,var(--gold),#ffd24d); color:#04202a; padding:4px 8px; border-radius:6px; font-weight:800; margin-left:8px">⭐ HQ</span>`:''}</div>
-          <div class="small-muted">Entry ${formatPrice(sig.entry,pair)}</div></div>
-          <div class="meta">
-            <div>SL: <strong>${formatPrice(sig.slPrice,pair)}</strong> (${sig.slPips} pips)</div>
-            <div>TP: <strong>${formatPrice(sig.tpPrice,pair)}</strong> (${sig.tpPips} pips)</div>
-            <div>Lot: <strong>${sig.lots}</strong></div>
-          </div>
-          <div class="${volClass}" style="margin-top:8px">ATR:${sig.atr.toFixed(decimals(pair))} RSI:${Math.round(sig.rsi)} Pattern:${sig.pattern||'—'}</div>
-          <div style="margin-top:8px" class="small-muted">Internal: ${sig.internalConfidence}% | Backtest Win: ${bt ? bt.winRate+'%' : 'N/A' } (samples ${bt?bt.total:0})</div>
-          <div style="margin-top:6px" class="small-muted">Combined Confidence: ${combined}%</div>
-          <div class="conf-bar"><div class="conf-fill" style="width:${combined}%"></div></div>
-          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-            <button onclick='markTaken(${JSON.stringify({pair:sig.pair,candidate:sig.candidate,entry:+sig.entry,sl:+sig.slPrice,tp:+sig.tpPrice,slPips:sig.slPips,tpPips:sig.tpPips,lots:sig.lots})})'>✅ Mark Taken</button>
-            <button onclick='openStructure(${JSON.stringify({pair:sig.pair,recent:sig.candles?sig.candles.slice(0,24):[]})})' class="ghost">Show Structure</button>
-            <button onclick='runBacktest(${JSON.stringify(sig.pair)}, ${settings.backtestBars})' class="ghost">🧪 Backtest</button>
-          </div>
-        </div>
-      `;
-      built.push(html);
-      summaryRows.push(`${pair}: win% ${bt ? bt.winRate : 'N/A'} (samples ${bt?bt.total:0})`);
+      cards.push(renderSignalCard(sig));
+      summaryRows.push(`${pair}: bt ${bt?bt.winRate+'%':'N/A'} (s ${bt?bt.total:0})`);
     }catch(err){
       console.error("pair error",pair,err);
-      built.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data error</div></div>`);
+      cards.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data error</div></div>`);
       noteFetchError();
     }
+    // pace between pairs
     await sleep(API_DELAY_MS);
   }
 
-  signalsContainer.innerHTML = built.join("");
+  signalsContainer.innerHTML = cards.join("");
   document.querySelectorAll('.conf-fill').forEach(e=>{ const w=e.style.width; e.style.width='0%'; setTimeout(()=>e.style.width=w,50); });
   lastUpdatedEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
   backtestSummaryEl.textContent = summaryRows.join(" | ");
@@ -552,7 +570,7 @@ async function refreshAllSignals(){
 /* ================== tracker & utilities ================== */
 function markTaken(obj){
   const t = loadTracker();
-  const rec = { pair: obj.pair, side: obj.candidate || obj.side, entry:+obj.entry, sl:+obj.sl, tp:+obj.tp, lots:obj.lots || 0.01, takenAt:new Date().toISOString(), resolved:false };
+  const rec = { pair: obj.pair, side: obj.side || obj.candidate, entry:+obj.entry, sl:+obj.sl, tp:+obj.tp, lots:obj.lots || 0.01, takenAt:new Date().toISOString(), resolved:false };
   t.push(rec); localStorage.setItem(TRACKER_KEY, JSON.stringify(t));
   alert("Saved trade to local tracker.");
 }
@@ -576,25 +594,33 @@ function resolveTrade(index){
   alert("Saved resolution.");
 }
 
-/* ================== backtest controls ================== */
+/* ================== backtest/manual triggers ================== */
 async function runBacktest(pair, bars){
+  if(!BACKTEST_ENABLED){
+    alert("Backtest is disabled to save API credits. Toggle BACKTEST_ENABLED in code to enable.");
+    return;
+  }
   try{
     const barsNum = Math.min(bars || settings.backtestBars || BACKTEST_LIMIT, BACKTEST_LIMIT);
     const candles = await tdCandlesCached(pair, barsNum, INTERVAL_MAIN).catch(()=>null);
     if(!candles) return alert("Backtest failed: no historical data (or API limit). Try fewer bars.");
-    const summary = simulate(pair, candles, settings);
+    const summary = simulate(pair, candles);
     alert(`${pair} backtest — samples: ${summary.total}\nWins: ${summary.wins}\nLosses: ${summary.losses}\nWinRate: ${summary.winRate}%`);
     localStorage.setItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_"), JSON.stringify(summary));
   }catch(e){ console.error(e); alert("Backtest error (see console)"); }
 }
 
 async function runBacktestForAll(){
+  if(!BACKTEST_ENABLED){
+    alert("Backtest is disabled to conserve API credits. Enable BACKTEST_ENABLED in the script to run.");
+    return;
+  }
   const rows=[];
   for(const p of PAIRS){
     try{
       const c = await tdCandlesCached(p, settings.backtestBars || BACKTEST_LIMIT, INTERVAL_MAIN).catch(()=>null);
       if(!c){ rows.push(`${p}: no data`); continue; }
-      const s = simulate(p, c, settings);
+      const s = simulate(p, c);
       rows.push(`${p}: win% ${s.winRate} (samples ${s.total})`);
       localStorage.setItem(BACKTEST_CACHE_KEY + "_" + p.replace("/","_"), JSON.stringify(s));
     }catch(e){ rows.push(`${p}: error`); }
@@ -606,14 +632,13 @@ async function runBacktestForAll(){
 
 /* ================== misc ================== */
 function openStructure(obj){ alert(JSON.stringify(obj).slice(0,1500)); }
-function resetLocal(){ if(confirm("Reset local storage?")){ localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(TRACKER_KEY); PAIRS.forEach(p=>{ localStorage.removeItem(`fx_cache_${p.replace("/","_")}_${INTERVAL_MAIN}`); localStorage.removeItem(`fx_cache_${p.replace("/","_")}_${INTERVAL_MAIN}_meta`); localStorage.removeItem(`fx_cache_${p.replace("/","_")}_${INTERVAL_SCALP}`); localStorage.removeItem(`fx_cache_${p.replace("/","_")}_${INTERVAL_SCALP}_meta`); localStorage.removeItem(BACKTEST_CACHE_KEY + "_" + p.replace("/","_")); localStorage.removeItem("fx_lasttime_"+p.replace("/","_")); }); location.reload(); } }
-
+function resetLocal(){ if(confirm("Reset local storage?")){ localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(TRACKER_KEY); PAIRS.forEach(p=>{ localStorage.removeItem(cacheKey(p,INTERVAL_MAIN)); localStorage.removeItem(cacheMeta(p,INTERVAL_MAIN)); localStorage.removeItem(cacheKey(p,INTERVAL_SCALP)); localStorage.removeItem(cacheMeta(p,INTERVAL_SCALP)); localStorage.removeItem(BACKTEST_CACHE_KEY + "_" + p.replace("/","_")); localStorage.removeItem("fx_lasttime_"+p.replace("/","_")); }); location.reload(); } }
 async function manualRefresh(){ await refreshAllSignals().catch(e=>console.error(e)); }
 
-/* ================== init loop ================== */
+/* ================== INIT (start refresh loop) ================== */
 (async ()=>{
   try{ await refreshAllSignals(); }catch(e){ console.error(e); }
-  setInterval(()=>{ refreshAllSignals().catch(e=>console.error(e)); }, AUTO_REFRESH_MINUTES * 60 * 1000);
+  setInterval(()=>{ refreshAllSignals().catch(e=>console.error(e)); }, REFRESH_INTERVAL_MS);
 })();
 </script>
 </body>
