@@ -134,7 +134,7 @@ const INTERVAL_SCALP = "15min";
 const REFRESH_INTERVAL_MS = null; // manual-only (no auto-refresh)
 const API_DELAY_BASE_MS = 1000;   // pacing between pair requests
 let API_DELAY_MS = API_DELAY_BASE_MS;
-const BACKTEST_ENABLED = false;   // Keep false to save API credits; toggle when ready
+let BACKTEST_ENABLED = false;    // toggle if you want node-driven backtests
 const BACKTEST_LIMIT = 30; // bars used for manual backtest
 const RR_TARGET = 2.0;
 const SPREAD_BUFFER_PIPS_MAJOR = 0.5;
@@ -233,7 +233,6 @@ async function tdCandlesCached(pair, bars, interval){
 /* ================== INDICATORS: EMA, RSI, MACD, ATR ================== */
 function calcEMA(arr, period){
   if(!arr || arr.length < period) return null;
-  // arr[0] is latest - we reverse to compute from oldest to newest
   const rev = arr.slice().reverse();
   let ema = rev.slice(0,period).reduce((a,b)=>a+b,0)/period;
   const k = 2/(period+1);
@@ -458,12 +457,34 @@ function simulate(pair, candles){
   return { total, wins, losses, winRate };
 }
 
+/* ================== NODE BACKEND BACKTEST HELPER ================== */
+/*
+  This function calls your local node backend:
+  http://localhost:3000/backtest?symbol=PAIR
+  (Make sure server.js is running on port 3000)
+*/
+async function fetchBacktestFromNode(symbol){
+  try{
+    // Node backtest endpoint on your machine
+    const url = `http://localhost:3000/backtest?symbol=${encodeURIComponent(symbol)}`;
+    const j = await fetchWithRetry(url, 2, 600);
+    if(!j || j.success === false) return null;
+    // normalise: backend returns { success, symbol, total, wins, losses, winrate }
+    return { total: j.total || 0, wins: j.wins || 0, losses: j.losses || 0, winRate: Number(j.winrate || j.winRate || 0) };
+  }catch(e){
+    console.warn("Node backtest fetch failed:", e.message || e);
+    return null;
+  }
+}
+
 /* ================== UI rendering helpers ================== */
 function renderSignalCard(sig){
   const isScalp = sig.type === "scalp";
   const label = isScalp ? "SCALP" : (sig.type === "intraday" ? "INTRADAY" : "SWING");
   const sideColor = (sig.candidate || sig.side) === "BUY" ? "var(--good)" : "var(--bad)";
   const conf = sig.internalConfidence || Math.min(95, 60);
+  // hide below 65% (user requested earlier) — do not render
+  if(conf < 65) return '';
   const volClass = sig.atr > (sig.pair==="XAU/USD"?2: sig.pair.includes("JPY")?0.05:0.0007) ? "vol.high" : "vol.mid";
   const hq = (conf >= 75) || false;
   const cardClass = hq ? "signal-card hq" : "signal-card";
@@ -517,7 +538,8 @@ async function refreshAllSignals(){
         scalp.internalConfidence = Math.min(95, 55 + Math.round((65 - scalp.rsi) || 0));
         scalp.lots = scalp.lots || 0.01;
         scalp.pair = pair;
-        cards.push(renderSignalCard(scalp));
+        const html = renderSignalCard(scalp);
+        if(html) cards.push(html);
       }
 
       // pace
@@ -537,20 +559,21 @@ async function refreshAllSignals(){
         continue;
       }
 
-      // optionally run light backtest only when BACKTEST_ENABLED
+      // optionally run Node backtest only when BACKTEST_ENABLED and confidence pass
       let bt = null;
       if(BACKTEST_ENABLED && sig.internalConfidence >= 60){
-        const cachedBt = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_")) || "null");
-        const lastTimeKey = "fx_lasttime_" + pair.replace("/","_");
-        const storedLast = localStorage.getItem(lastTimeKey);
-        if(!cachedBt || storedLast !== sig.lastCandleTime){
-          const summary = simulate(pair, candles);
-          bt = summary;
-          localStorage.setItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_"), JSON.stringify(summary));
-          localStorage.setItem(lastTimeKey, sig.lastCandleTime);
-        } else bt = cachedBt;
+        // prefer node backtest to save direct API usage
+        const nodeResult = await fetchBacktestFromNode(sig.pair);
+        if(nodeResult && nodeResult.total > 0){
+          bt = nodeResult;
+          localStorage.setItem(BACKTEST_CACHE_KEY + "_" + sig.pair.replace("/","_"), JSON.stringify(bt));
+        } else {
+          // fallback to client simulate (light)
+          const maybe = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + sig.pair.replace("/","_")) || "null");
+          if(maybe) bt = maybe;
+        }
       } else {
-        const maybe = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_")) || "null");
+        const maybe = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + sig.pair.replace("/","_")) || "null");
         if(maybe) bt = maybe;
       }
 
@@ -559,7 +582,8 @@ async function refreshAllSignals(){
       sig.internalConfidence = combined;
       sig.lots = sig.lots || Math.max(0.01, Math.round(( (settings.accountBalance * (settings.riskPercent||1)/100) / ((sig.slPips||sig.slPips) * (sig.pair==="XAU/USD"?1.0:(sig.pair.includes("JPY")?9:10)) ))*100)/100);
 
-      cards.push(renderSignalCard(sig));
+      const html = renderSignalCard(sig);
+      if(html) cards.push(html);
       summaryRows.push(`${pair}: bt ${bt?bt.winRate+'%':'N/A'} (s ${bt?bt.total:0})`);
     }catch(err){
       console.error("pair error",pair,err);
@@ -609,17 +633,21 @@ function resolveTrade(index){
 
 /* ================== backtest/manual triggers ================== */
 async function runBacktest(pair, bars){
+  // If BACKTEST_ENABLED we'll ask your node backend; otherwise notify user
   if(!BACKTEST_ENABLED){
-    alert("Backtest is disabled to save API credits. Toggle BACKTEST_ENABLED in code to enable.");
+    alert("Backtest is disabled to save API credits. Toggle BACKTEST_ENABLED in the script to enable.");
     return;
   }
   try{
     const barsNum = Math.min(bars || settings.backtestBars || BACKTEST_LIMIT, BACKTEST_LIMIT);
-    const candles = await tdCandlesCached(pair, barsNum, INTERVAL_MAIN).catch(()=>null);
-    if(!candles) return alert("Backtest failed: no historical data (or API limit). Try fewer bars.");
-    const summary = simulate(pair, candles);
-    alert(`${pair} backtest — samples: ${summary.total}\nWins: ${summary.wins}\nLosses: ${summary.losses}\nWinRate: ${summary.winRate}%`);
-    localStorage.setItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_"), JSON.stringify(summary));
+    // Ask node backend for summary
+    const nodeResult = await fetchBacktestFromNode(pair);
+    if(nodeResult && nodeResult.total > 0){
+      alert(`${pair} backtest — samples: ${nodeResult.total}\nWins: ${nodeResult.wins}\nLosses: ${nodeResult.losses}\nWinRate: ${nodeResult.winRate}%`);
+      localStorage.setItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_"), JSON.stringify(nodeResult));
+      return;
+    }
+    alert("Backtest failed via node backend — try manual backtest or enable BACKTEST_ENABLED on server.");
   }catch(e){ console.error(e); alert("Backtest error (see console)"); }
 }
 
@@ -631,11 +659,10 @@ async function runBacktestForAll(){
   const rows=[];
   for(const p of PAIRS){
     try{
-      const c = await tdCandlesCached(p, settings.backtestBars || BACKTEST_LIMIT, INTERVAL_MAIN).catch(()=>null);
-      if(!c){ rows.push(`${p}: no data`); continue; }
-      const s = simulate(p, c);
-      rows.push(`${p}: win% ${s.winRate} (samples ${s.total})`);
-      localStorage.setItem(BACKTEST_CACHE_KEY + "_" + p.replace("/","_"), JSON.stringify(s));
+      const nodeRes = await fetchBacktestFromNode(p);
+      if(!nodeRes){ rows.push(`${p}: no data`); continue; }
+      rows.push(`${p}: win% ${nodeRes.winRate} (samples ${nodeRes.total})`);
+      localStorage.setItem(BACKTEST_CACHE_KEY + "_" + p.replace("/","_"), JSON.stringify(nodeRes));
     }catch(e){ rows.push(`${p}: error`); }
     await sleep(250);
   }
