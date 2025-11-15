@@ -1,685 +1,161 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Forex Signal Studio — Manual Refresh (Dark)</title>
-<style>
-:root{
-  --bg:#071126; --panel:#0f2340; --muted:#9fb0c8; --accent:#3cbefc; --good:#27ae60; --warn:#f1c40f; --bad:#e74c3c; --gold:#d4af37;
-  --glass: rgba(255,255,255,0.03);
-}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#03051a,#071126);color:#e6f0fa}
-.header-fixed{
-  position:fixed; top:0; left:0; right:0; z-index:999;
-  background:linear-gradient(90deg, rgba(3,5,10,0.9), rgba(7,17,38,0.9));
-  border-bottom:1px solid rgba(255,255,255,0.03);
-  padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px;
-  box-shadow:0 4px 20px rgba(0,0,0,0.6);
-}
-.header-left{display:flex;gap:12px;align-items:center}
-h1{margin:0;font-size:16px;color:var(--accent);font-weight:700}
-.controls{display:flex;gap:8px;align-items:center}
-button{background:var(--accent);color:#04202a;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:700}
-button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(255,255,255,0.04)}
-.wrap{padding:86px 16px 24px;display:flex;gap:16px;flex-wrap:wrap} /* top padding accounts for fixed header */
-.panel{background:var(--panel);border-radius:10px;padding:12px;box-shadow:0 6px 20px rgba(2,8,23,0.6);border:1px solid rgba(255,255,255,0.02)}
-.panel.small{width:340px}
-.panel.big{flex:1 1 760px;min-width:320px}
-.small-muted{font-size:12px;color:var(--muted)}
-.input{background:transparent;border:1px solid rgba(255,255,255,0.05);padding:8px;border-radius:6px;color:#e6f0fa;width:100%}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:12px}
-.signal-card{border-radius:10px;padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border:1px solid rgba(255,255,255,0.03)}
-.signal-card.hq{box-shadow:0 8px 30px rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.12)}
-.pair{display:flex;justify-content:space-between;align-items:center}
-.chip{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.02);font-weight:700}
-.meta{font-size:13px;color:var(--muted);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap}
-.vol.low{background:#1a7a3c;color:#d7ffe9;padding:4px 8px;border-radius:6px}
-.vol.mid{background:#f1c40f;color:#201600;padding:4px 8px;border-radius:6px}
-.vol.high{background:#d63c3c;color:#fff;padding:4px 8px;border-radius:6px}
-.conf-bar{height:8px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden;margin-top:8px}
-.conf-fill{height:100%;background:linear-gradient(90deg,var(--bad),#ffd24d,var(--gold));width:0%;transition:width 600ms ease}
-.footer{padding:12px;color:var(--muted);text-align:center;border-top:1px solid rgba(255,255,255,0.03);margin-top:12px}
-.tag{display:inline-block;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);margin-right:6px;font-size:12px}
-.small-btn{padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:var(--muted);cursor:pointer}
-.badge{padding:4px 8px;border-radius:6px;font-weight:700}
-@media(max-width:900px){.wrap{flex-direction:column}.panel.small{width:100%}.panel.big{width:100%}}
-</style>
-</head>
-<body>
-  <!-- Fixed header with Always-visible Refresh button -->
-  <div class="header-fixed">
-    <div class="header-left">
-      <h1>Forex Signal Studio — Manual Refresh</h1>
-      <div class="small-muted" style="margin-left:8px">Scalp • Intraday • Swing</div>
-    </div>
-    <div class="controls">
-      <button id="refreshBtn" onclick="manualRefresh()">🔄 Refresh Signals</button>
-      <button class="ghost" onclick="openTracker()">Tracker</button>
-    </div>
-  </div>
+// =========================
+// CONFIG
+// =========================
+const API_KEY = "318e2543fba14c57836adc5ce228ee7e";
+const BACKEND_URL = "http://localhost:3000/backtest"; // Node server
+const REFRESH_INTERVAL = 10000; // refresh every 10s
 
-  <div class="wrap">
-    <div class="panel small">
-      <div><strong>Settings</strong></div>
-      <div class="small-muted">Account & risk</div>
-      <div style="margin-top:8px;">
-        <label class="small-muted">Account (USD)</label><br>
-        <input id="accountBalance" class="input" type="number" value="1000" min="10" />
-      </div>
-      <div style="margin-top:8px;">
-        <label class="small-muted">Risk % per trade</label><br>
-        <input id="riskPercent" class="input" type="number" value="1" step="0.1" min="0.1" />
-      </div>
+// Don't show signals below this confidence %
+const CONFIDENCE_THRESHOLD = 65;
 
-      <hr style="opacity:0.04;margin:12px 0" />
-      <div><strong>Backtest</strong></div>
-      <div class="small-muted">Kept in code — currently disabled to save API credits</div>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-        <label class="small-muted">Bars</label>
-        <select id="backtestBars" class="input" style="width:110px"><option>20</option><option selected>30</option><option>40</option></select>
-      </div>
-      <div style="margin-top:10px;">
-        <button class="ghost" onclick="runBacktestForAll()">▶ Manual Backtest</button>
-      </div>
+// Pairs we now support
+const PAIRS = [
+    "XAU/USD", "EUR/USD", "GBP/USD", "USD/JPY", "GBP/JPY",
+    "EUR/JPY", "EUR/GBP", "GBP/AUD", "BTC/USD", "ETH/USD"
+];
 
-      <hr style="opacity:0.04;margin:12px 0" />
-      <div><strong>Indicators & filters</strong></div>
-      <div class="small-muted" style="margin-top:8px">EMA (20,50) • RSI(14) • MACD(12,26,9) • ATR(14)</div>
-
-      <hr style="opacity:0.04;margin:12px 0" />
-      <div><strong>Other</strong></div>
-      <div style="margin-top:8px;"><label class="small-muted">SL multiplier</label><br><input id="slMultiplier" class="input" type="number" value="1.0" step="0.05" /></div>
-      <div style="margin-top:8px;"><label class="small-muted">Max SL (pips)</label><br><input id="maxSlPips" class="input" type="number" value="50" /></div>
-      <div style="margin-top:10px;"><button onclick="resetLocal()" class="ghost">Reset Local Data</button></div>
-      <div style="margin-top:12px;" class="small-muted">Manual refresh only — press the button above to fetch</div>
-    </div>
-
-    <div class="panel big">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><strong>Signals — each card is one signal</strong><div class="small-muted">Scalp (M15) | Intraday (H1) | Swing (H1+)</div></div>
-        <div class="small-muted" id="lastUpdated">—</div>
-      </div>
-
-      <div id="signalsContainer" class="grid"></div>
-      <div id="backtestSummary" class="small-muted" style="margin-top:12px"></div>
-    </div>
-  </div>
-
-  <!-- Tracker modal -->
-  <div id="trackerModal" style="display:none;position:fixed;inset:8% 6% 8% 6%;background:var(--panel);border-radius:8px;padding:12px;z-index:9999;overflow:auto">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <strong>Trade Tracker (local)</strong>
-      <div><button class="ghost" onclick="closeTracker()">Close</button></div>
-    </div>
-    <div id="trackerList" style="margin-top:12px"></div>
-    <div style="margin-top:10px"><button onclick="clearTracker()" class="ghost">Clear Tracker</button></div>
-  </div>
-
-  <footer class="footer">Kept light for Twelve Data free tier — scalp + intraday + swing. Use demo account first. Backtest disabled by default.</footer>
-
-<script>
-/* ================== USER TUNABLE CONFIG ================== */
-// Twelve Data key (leave as-is or replace)
-const TD_KEY = "318e2543fba14c57836adc5ce228ee7e";
-
-// Pairs (majors + crosses + gold)
-const PAIRS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY","GBP/JPY","EUR/GBP","GBP/AUD","XAU/USD"];
-
-// Intervals and settings
-const INTERVAL_MAIN = "1h";
-const INTERVAL_SCALP = "15min";
-const REFRESH_INTERVAL_MS = null; // manual-only (no auto-refresh)
-const API_DELAY_BASE_MS = 1000;   // pacing between pair requests
-let API_DELAY_MS = API_DELAY_BASE_MS;
-let BACKTEST_ENABLED = false;    // toggle if you want node-driven backtests
-const BACKTEST_LIMIT = 30; // bars used for manual backtest
-const RR_TARGET = 2.0;
-const SPREAD_BUFFER_PIPS_MAJOR = 0.5;
-const SPREAD_BUFFER_PIPS_XAU = 15;
-const CACHE_TTL_MAIN_MS = 20 * 60 * 1000; // 20 minutes
-const CACHE_TTL_SCALP_MS = 5 * 60 * 1000; // 5 minutes
-
-/* ================== SETTINGS state & UI hookup ================== */
-const SETTINGS_KEY = "fx_v3_settings";
-const TRACKER_KEY = "fx_v3_tracker";
-const BACKTEST_CACHE_KEY = "fx_v3_bt";
-
-let settings = loadSettings();
-document.getElementById("accountBalance").value = settings.accountBalance;
-document.getElementById("riskPercent").value = settings.riskPercent;
-document.getElementById("slMultiplier").value = settings.slMultiplier;
-document.getElementById("maxSlPips").value = settings.maxSlPips;
-document.getElementById("backtestBars").value = settings.backtestBars;
-
-["accountBalance","riskPercent","slMultiplier","maxSlPips","backtestBars"].forEach(id=>{
-  document.getElementById(id).addEventListener("change", ()=>{
-    settings.accountBalance = +document.getElementById("accountBalance").value || settings.accountBalance;
-    settings.riskPercent = +document.getElementById("riskPercent").value || settings.riskPercent;
-    settings.slMultiplier = +document.getElementById("slMultiplier").value || settings.slMultiplier;
-    settings.maxSlPips = +document.getElementById("maxSlPips").value || settings.maxSlPips;
-    settings.backtestBars = +document.getElementById("backtestBars").value || settings.backtestBars;
-    saveSettings(settings);
-  });
-});
-
-/* ================== UTILS & STORAGE ================== */
-function loadSettings(){ return Object.assign({accountBalance:1000,riskPercent:1,slMultiplier:1.0,maxSlPips:50,backtestBars:30}, JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}")); }
-function saveSettings(s){ localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
-function loadTracker(){ return JSON.parse(localStorage.getItem(TRACKER_KEY)||"[]"); }
-function saveTracker(a){ localStorage.setItem(TRACKER_KEY, JSON.stringify(a)); }
-function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
-function pipSize(pair){ if(pair.includes("JPY")) return 0.01; if(pair==="XAU/USD") return 0.01; return 0.0001; }
-function decimals(pair){ return (pair.includes("JPY")||pair==="XAU/USD")?2:5; }
-function formatPrice(v,pair){ return (typeof v==="number"?v:parseFloat(v)).toFixed(decimals(pair)); }
-
-/* simple adaptive throttling */
-let recentErrors = 0;
-function noteFetchError(){ recentErrors++; if(recentErrors>=3){ API_DELAY_MS = API_DELAY_BASE_MS * 2; console.warn("API errors increasing: raised delay"); } }
-function noteFetchSuccess(){ if(recentErrors>0) recentErrors--; if(recentErrors<=0){ recentErrors=0; API_DELAY_MS = API_DELAY_BASE_MS; } }
-
-/* ================== FETCH + CACHE helpers ================== */
-async function fetchWithRetry(url, tries=2, wait=600){
-  for(let i=0;i<tries;i++){
-    try{
-      const res = await fetch(url);
-      if(!res.ok) throw new Error("HTTP " + res.status);
-      const j = await res.json();
-      return j;
-    }catch(e){
-      if(i===tries-1) throw e;
-      await sleep(wait * Math.pow(2,i));
+// =========================
+// Fetch Market Data
+// =========================
+async function fetchTwelveData(symbol) {
+    try {
+        const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1min&apikey=${API_KEY}&outputsize=50`;
+        const res = await fetch(url);
+        const data = await res.json();
+        return data.values ? data.values.reverse() : null;
+    } catch (err) {
+        console.error("❌ API Error:", err);
+        return null;
     }
-  }
 }
 
-/* cache keys per pair & interval */
-function cacheKey(pair, interval){ return `fx_cache_${pair.replace("/","_")}_${interval}`; }
-function cacheMeta(pair, interval){ return `${cacheKey(pair,interval)}_meta`; }
-
-async function tdCandlesCached(pair, bars, interval){
-  const key = cacheKey(pair, interval), metaKey = cacheMeta(pair, interval);
-  const meta = JSON.parse(localStorage.getItem(metaKey) || "null");
-  const cached = JSON.parse(localStorage.getItem(key) || "null");
-  const now = Date.now();
-  const ttl = (interval === INTERVAL_SCALP) ? CACHE_TTL_SCALP_MS : CACHE_TTL_MAIN_MS;
-
-  if(cached && meta && (now - meta.fetchedAt < ttl) && cached.length >= bars) return cached.slice(0,bars);
-
-  // fetch
-  try{
-    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(pair)}&interval=${interval}&outputsize=${bars}&format=JSON&apikey=${TD_KEY}`;
-    const j = await fetchWithRetry(url, 2, 600);
-    if(j && j.values){
-      const values = j.values.map(v=>({ time: v.datetime || v.timestamp, open:+v.open, high:+v.high, low:+v.low, close:+v.close }));
-      localStorage.setItem(key, JSON.stringify(values));
-      localStorage.setItem(metaKey, JSON.stringify({ fetchedAt: Date.now(), bars: values.length }));
-      noteFetchSuccess();
-      return values.slice(0,bars);
-    } else {
-      noteFetchError();
-    }
-  }catch(e){
-    console.warn("fetch failed", pair, interval, e.message);
-    noteFetchError();
-  }
-
-  if(cached && cached.length>0) return cached.slice(0,bars);
-  return null;
+// =========================
+// Simple Indicators
+// =========================
+function SMA(values, length) {
+    if (values.length < length) return null;
+    const slice = values.slice(-length);
+    const sum = slice.reduce((a, b) => a + parseFloat(b.close), 0);
+    return sum / length;
 }
 
-/* ================== INDICATORS: EMA, RSI, MACD, ATR ================== */
-function calcEMA(arr, period){
-  if(!arr || arr.length < period) return null;
-  const rev = arr.slice().reverse();
-  let ema = rev.slice(0,period).reduce((a,b)=>a+b,0)/period;
-  const k = 2/(period+1);
-  for(let i=period;i<rev.length;i++) ema = (rev[i] - ema) * k + ema;
-  return ema;
-}
-function calcRSI(candles, period=14){
-  if(!candles || candles.length <= period) return 50;
-  let gains=0, losses=0;
-  for(let i=0;i<period;i++){
-    const diff = candles[i].close - (candles[i+1]?candles[i+1].close:candles[i].close);
-    if(diff>0) gains += diff; else losses -= diff;
-  }
-  if(losses === 0) return 100;
-  const avgGain = gains/period, avgLoss = losses/period;
-  const rs = avgGain/avgLoss;
-  return 100 - (100/(1+rs));
-}
-function calcATR(candles, period=14){
-  if(!candles || candles.length <= period) return 0;
-  let sum = 0;
-  for(let i=0;i<period;i++){
-    const hi = candles[i].high, lo = candles[i].low, prev = (i+1<candles.length)?candles[i+1].close:candles[i].close;
-    const tr = Math.max(hi-lo, Math.abs(hi-prev), Math.abs(lo-prev));
-    sum += tr;
-  }
-  return sum/period;
-}
-function calcMACD(closes, fast=12, slow=26, signal=9){
-  if(!closes || closes.length < slow+signal) return { macd:0, signal:0, hist:0 };
-  const emaFast = calcEMA(closes, fast);
-  const emaSlow = calcEMA(closes, slow);
-  if(emaFast === null || emaSlow === null) return { macd:0, signal:0, hist:0 };
-  const macdLine = emaFast - emaSlow;
-  const macdSeries = [];
-  for(let i=0;i<slow+signal;i++){
-    const window = closes.slice(i);
-    const a = calcEMA(window, fast); const b = calcEMA(window, slow);
-    if(a === null || b === null) macdSeries.push(0); else macdSeries.push(a-b);
-  }
-  const signalLine = calcEMA(macdSeries, signal) || 0;
-  return { macd: macdLine, signal: signalLine, hist: macdLine - signalLine };
-}
+function RSI(values, period = 14) {
+    if (values.length < period + 1) return null;
 
-/* ================== Pattern detection (preserve original) ================== */
-function detectCandles(candles){
-  if(!candles || candles.length < 2) return null;
-  const curr = candles[0], prev = candles[1];
-  const currBody = Math.abs(curr.close - curr.open);
-  const currWickTop = curr.high - Math.max(curr.open,curr.close);
-  const currWickBottom = Math.min(curr.open,curr.close) - curr.low;
-  if(curr.close>curr.open && prev.close<prev.open && curr.open < prev.close && curr.close > prev.open) return "bullish_engulfing";
-  if(curr.close<curr.open && prev.close>prev.open && curr.open > prev.close && curr.close < prev.open) return "bearish_engulfing";
-  if(currWickBottom > 2*currBody && currWickTop < currBody) return "bullish_pin";
-  if(currWickTop > 2*currBody && currWickBottom < currBody) return "bearish_pin";
-  return null;
-}
-function recentStructure(candles, lookback=24){
-  const slice = (candles||[]).slice(0,lookback);
-  if(slice.length===0) return {resistance:0,support:0};
-  const highs = slice.map(c=>c.high), lows = slice.map(c=>c.low);
-  return { resistance: Math.max(...highs), support: Math.min(...lows) };
-}
-
-/* ================== BUILD SIGNAL (main logic preserved + indicators) ================== */
-function buildFromCandles(pair, candles, settingsLocal){
-  try{
-    if(!candles || candles.length < 20) return { valid:false, reason:"Insufficient data" };
-    const currentPrice = candles[0].close;
-    const closes = candles.map(c=>c.close);
-    const ema20 = calcEMA(closes,20) || currentPrice;
-    const ema50 = calcEMA(closes,50) || currentPrice;
-    const rsi = calcRSI(candles,14);
-    const atr = calcATR(candles,14);
-    const macdObj = calcMACD(closes,12,26,9);
-    const pattern = detectCandles(candles);
-    const struct = recentStructure(candles,24);
-    const trend = ema20 > ema50 ? "up" : "down";
-
-    let candidate = null;
-    // price action + indicator filter
-    if(trend==="up" && rsi < 65 && macdObj.hist >= 0){
-      if(pattern==="bullish_engulfing" || pattern==="bullish_pin" || rsi < 55) candidate = "BUY";
-    }
-    if(trend==="down" && rsi > 35 && macdObj.hist <= 0){
-      if(pattern==="bearish_engulfing" || pattern==="bearish_pin" || rsi > 45) candidate = "SELL";
+    let gains = 0, losses = 0;
+    for (let i = values.length - period; i < values.length; i++) {
+        const diff = values[i].close - values[i - 1].close;
+        if (diff > 0) gains += diff;
+        else losses -= diff;
     }
 
-    // fallback: weaker confluence
-    if(!candidate){
-      if(rsi < 30 && macdObj.hist > 0) candidate = "BUY";
-      if(rsi > 70 && macdObj.hist < 0) candidate = "SELL";
+    const rs = gains / (losses === 0 ? 1 : losses);
+    return 100 - 100 / (1 + rs);
+}
+
+// =========================
+// Signal Logic
+// =========================
+function generateSignal(candles) {
+    const sma5 = SMA(candles, 5);
+    const sma20 = SMA(candles, 20);
+    const rsi = RSI(candles, 14);
+    const last = candles[candles.length - 1].close;
+
+    let signal = "NONE";
+    let confidence = 50;
+
+    // Trend logic
+    if (sma5 > sma20) {
+        signal = "BUY";
+        confidence += 10;
+    } else if (sma5 < sma20) {
+        signal = "SELL";
+        confidence += 10;
     }
-    if(!candidate) return { valid:false, reason:"No confluence" };
 
-    // choose intraday vs swing bias: mark isIntraday if entry offset small
-    const psize = pipSize(pair);
-    const intradayMin = (pair==="XAU/USD") ? 20 : 5;
-    const intradayMax = (pair==="XAU/USD") ? 40 : 10;
-    const entryOffsetPips = intradayMin + Math.floor(Math.random() * (intradayMax - intradayMin + 1));
-    const entry = candidate==="BUY" ? currentPrice - entryOffsetPips * psize : currentPrice + entryOffsetPips * psize;
-
-    // SL from ATR * multiplier and clamp
-    const atrPips = Math.max(1, Math.round(atr / psize));
-    let slPips = Math.round(atrPips * (settingsLocal.slMultiplier || 1.0));
-    if(slPips < intradayMin) slPips = intradayMin;
-    if(slPips > (settingsLocal.maxSlPips || 100)) slPips = settingsLocal.maxSlPips || 100;
-    if(pair==="XAU/USD" && slPips < 60) slPips = 60;
-
-    const spreadBuf = (pair==="XAU/USD") ? SPREAD_BUFFER_PIPS_XAU : SPREAD_BUFFER_PIPS_MAJOR;
-    const slPrice = candidate==="BUY" ? entry - slPips*psize - spreadBuf*psize : entry + slPips*psize + spreadBuf*psize;
-    const tpPrice = candidate==="BUY" ? entry + slPips*psize*RR_TARGET : entry - slPips*psize*RR_TARGET;
-
-    const account = settingsLocal.accountBalance || 1000;
-    const riskUSD = account * (settingsLocal.riskPercent || 1) / 100;
-    const pipDollar = (pair==="XAU/USD") ? 1.0 : (pair.includes("JPY") ? 9.0 : 10.0);
-    const lots = Math.max(0.01, Math.round((riskUSD / (slPips * pipDollar)) * 100) / 100);
-
-    // confidence scoring
-    let score = 0;
-    score += (trend==="up" && candidate==="BUY") || (trend==="down" && candidate==="SELL") ? 25 : 0;
-    score += pattern ? 18 : 0;
-    score += Math.max(0, 15 - Math.abs(rsi - (candidate==="BUY"?45:55)));
-    const structDist = candidate==="BUY" ? Math.abs(entry - struct.support) : Math.abs(struct.resistance - entry);
-    const structPips = Math.round(structDist / psize);
-    score += (structPips <= slPips) ? 10 : 0;
-    score += (Math.abs(macdObj.hist) > 0.0001) ? 10 : 0;
-    score += Math.min(12, Math.round((atrPips / slPips) * 12));
-    const internalConfidence = Math.min(95, Math.round(score));
-    const isIntraday = entryOffsetPips <= intradayMax;
+    // RSI adjustments
+    if (rsi < 30 && signal === "BUY") confidence += 15;
+    if (rsi > 70 && signal === "SELL") confidence += 15;
 
     return {
-      valid:true, pair, candidate,
-      type: isIntraday ? "intraday" : "swing",
-      entry, slPrice, tpPrice, slPips, tpPips: Math.round(Math.abs((tpPrice - entry) / psize)),
-      lots, internalConfidence, atr, rsi, ema20, ema50, macd: macdObj, pattern, struct, lastCandleTime: candles[0].time
+        signal,
+        confidence: Math.min(confidence, 100),
+        price: last,
+        sma5,
+        sma20,
+        rsi
     };
-  }catch(e){
-    console.error("buildFromCandles error", e);
-    return { valid:false, reason:"error" };
-  }
 }
 
-/* ================== SCALP (15m) light pass ================== */
-async function analyzeScalp(pair){
-  const candles = await tdCandlesCached(pair, 30, INTERVAL_SCALP).catch(()=>null);
-  if(!candles || candles.length < 12) return null;
-  const psize = pipSize(pair);
-  const atr = calcATR(candles,14);
-  const rsi = calcRSI(candles,7);
-  const closes = candles.map(c=>c.close);
-  const ema9 = calcEMA(closes,9) || closes[0];
-  const ema21 = calcEMA(closes,21) || closes[0];
-  const macd = calcMACD(closes,12,26,9);
-  const last = candles[0].close;
-
-  // tight scalp rules: EMA9/21 cross + RSI and MACD momentum
-  if(ema9 > ema21 && rsi < 65 && macd.hist >= 0){
-    const entry = last;
-    const slPips = Math.max(4, Math.round((atr/psize) * 0.9));
-    const tpPips = Math.max(6, Math.round(slPips * 1.5));
-    const spreadBuf = (pair==="XAU/USD")? SPREAD_BUFFER_PIPS_XAU : SPREAD_BUFFER_PIPS_MAJOR;
-    const slPrice = entry - slPips*psize - spreadBuf*psize;
-    const tpPrice = entry + tpPips*psize;
-    return { pair, type:"scalp", candidate:"BUY", entry, slPrice, tpPrice, slPips, tpPips, atr, rsi, ema9, ema21, macd, lots:0.01 };
-  }
-  if(ema9 < ema21 && rsi > 35 && macd.hist <= 0){
-    const entry = last;
-    const slPips = Math.max(4, Math.round((atr/psize) * 0.9));
-    const tpPips = Math.max(6, Math.round(slPips * 1.5));
-    const spreadBuf = (pair==="XAU/USD")? SPREAD_BUFFER_PIPS_XAU : SPREAD_BUFFER_PIPS_MAJOR;
-    const slPrice = entry + slPips*psize + spreadBuf*psize;
-    const tpPrice = entry - tpPips*psize;
-    return { pair, type:"scalp", candidate:"SELL", entry, slPrice, tpPrice, slPips, tpPips, atr, rsi, ema9, ema21, macd, lots:0.01 };
-  }
-  return null;
-}
-
-/* ================== LIGHT SIMULATE (backtest) - kept but off by default ================== */
-function simulate(pair, candles){
-  if(!candles || candles.length < 20) return { total:0, wins:0, losses:0, winRate:0 };
-  const rev = candles.slice().reverse();
-  const psize = pipSize(pair);
-  const results = [];
-  for(let i=15;i<rev.length-1;i++){
-    const window = rev.slice(0,i+1).reverse();
-    const ema20 = calcEMA(window.map(c=>c.close),20);
-    const ema50 = calcEMA(window.map(c=>c.close),50);
-    const rsi = calcRSI(window,14);
-    let sumDiff=0; for(let t=0;t<Math.min(5,window.length-1);t++) sumDiff += (window[t].close - (window[t+1]?window[t+1].close:window[t].close));
-    const trendDir = sumDiff>0 ? "bull" : sumDiff<0 ? "bear" : "neutral";
-    let candidate=null;
-    if(trendDir==="bull" && window[0].close > (ema50||0) && rsi < 60) candidate="BUY";
-    if(trendDir==="bear" && window[0].close < (ema50||0) && rsi > 40) candidate="SELL";
-    if(!candidate) continue;
-    const atr = calcATR(window,14);
-    const atrPips = Math.max(1, Math.round(atr/psize));
-    let slPips = Math.round(atrPips * settings.slMultiplier);
-    if(slPips < 5) slPips = 5;
-    if(slPips > settings.maxSlPips) slPips = settings.maxSlPips;
-    let entry = candidate==="BUY" ? window[0].close - 5*psize : window[0].close + 5*psize;
-    const spreadBuf = (pair==="XAU/USD") ? SPREAD_BUFFER_PIPS_XAU * psize : SPREAD_BUFFER_PIPS_MAJOR * psize;
-    let slPrice = candidate==="BUY" ? entry - slPips*psize - spreadBuf : entry + slPips*psize + spreadBuf;
-    let tpPrice = candidate==="BUY" ? entry + slPips*psize*RR_TARGET : entry - slPips*psize*RR_TARGET;
-    let hit=null;
-    for(let k=i+1;k<rev.length;k++){
-      const h = rev[k].high, l = rev[k].low;
-      if(candidate==="BUY"){
-        if(l <= slPrice){ hit={type:"SL"}; break; }
-        if(h >= tpPrice){ hit={type:"TP"}; break; }
-      } else {
-        if(h >= slPrice){ hit={type:"SL"}; break; }
-        if(l <= tpPrice){ hit={type:"TP"}; break; }
-      }
+// =========================
+// Fetch Node Backtest
+// =========================
+async function fetchBacktest(symbol) {
+    try {
+        const url = `${BACKEND_URL}?symbol=${symbol}`;
+        const result = await fetch(url).then(res => res.json());
+        return result;
+    } catch (err) {
+        console.error("❌ Backtest Error:", err);
+        return null;
     }
-    if(hit) results.push(hit);
-  }
-  const wins = results.filter(r=>r.type==="TP").length;
-  const losses = results.filter(r=>r.type==="SL").length;
-  const total = results.length || 0;
-  const winRate = total ? Math.round((wins/total)*100) : 0;
-  return { total, wins, losses, winRate };
 }
 
-/* ================== NODE BACKEND BACKTEST HELPER ================== */
-/*
-  This function calls your local node backend:
-  http://localhost:3000/backtest?symbol=PAIR
-  (Make sure server.js is running on port 3000)
-*/
-async function fetchBacktestFromNode(symbol){
-  try{
-    // Node backtest endpoint on your machine
-    const url = `http://localhost:3000/backtest?symbol=${encodeURIComponent(symbol)}`;
-    const j = await fetchWithRetry(url, 2, 600);
-    if(!j || j.success === false) return null;
-    // normalise: backend returns { success, symbol, total, wins, losses, winrate }
-    return { total: j.total || 0, wins: j.wins || 0, losses: j.losses || 0, winRate: Number(j.winrate || j.winRate || 0) };
-  }catch(e){
-    console.warn("Node backtest fetch failed:", e.message || e);
-    return null;
-  }
+// =========================
+— Render Signals
+// =========================
+function renderSignalCard(symbol, data, backtest) {
+    const container = document.getElementById("signals");
+
+    const card = document.createElement("div");
+    card.className = "signal-card";
+
+    card.innerHTML = `
+        <h2>${symbol}</h2>
+        <p><strong>Signal:</strong> ${data.signal}</p>
+        <p><strong>Confidence:</strong> ${data.confidence}%</p>
+        <p><strong>Price:</strong> ${data.price}</p>
+
+        <hr>
+
+        <p><strong>SMA5:</strong> ${data.sma5.toFixed(2)}</p>
+        <p><strong>SMA20:</strong> ${data.sma20.toFixed(2)}</p>
+        <p><strong>RSI:</strong> ${data.rsi.toFixed(2)}</p>
+
+        <hr>
+
+        <p><strong>Backtest Wins:</strong> ${backtest?.wins ?? "?"}</p>
+        <p><strong>Backtest Losses:</strong> ${backtest?.losses ?? "?"}</p>
+    `;
+
+    container.appendChild(card);
 }
 
-/* ================== UI rendering helpers ================== */
-function renderSignalCard(sig){
-  const isScalp = sig.type === "scalp";
-  const label = isScalp ? "SCALP" : (sig.type === "intraday" ? "INTRADAY" : "SWING");
-  const sideColor = (sig.candidate || sig.side) === "BUY" ? "var(--good)" : "var(--bad)";
-  const conf = sig.internalConfidence || Math.min(95, 60);
-  // hide below 65% (user requested earlier) — do not render
-  if(conf < 65) return '';
-  const volClass = sig.atr > (sig.pair==="XAU/USD"?2: sig.pair.includes("JPY")?0.05:0.0007) ? "vol.high" : "vol.mid";
-  const hq = (conf >= 75) || false;
-  const cardClass = hq ? "signal-card hq" : "signal-card";
-  return `
-    <div class="${cardClass}">
-      <div class="pair"><div><strong>${sig.pair}</strong> <span class="chip">${label}</span> <span class="tag" style="background:${sideColor};color:#04202a;margin-left:8px">${sig.candidate || sig.side}</span></div>
-      <div class="small-muted">Entry ${formatPrice(sig.entry,sig.pair)}</div></div>
-      <div class="meta">
-        <div>SL: <strong>${formatPrice(sig.slPrice,sig.pair)}</strong> (${sig.slPips || sig.slPips} pips)</div>
-        <div>TP: <strong>${formatPrice(sig.tpPrice,sig.pair)}</strong> (${sig.tpPips || sig.tpPips} pips)</div>
-        <div>Lot: <strong>${sig.lots || (sig.type==="scalp"?0.01:sig.lots)}</strong></div>
-      </div>
-      <div class="${volClass}" style="margin-top:8px">ATR:${(sig.atr||0).toFixed(decimals(sig.pair))} RSI:${Math.round(sig.rsi||0)} Pattern:${sig.pattern||'—'}</div>
-      <div style="margin-top:8px" class="small-muted">Confidence: ${conf}%</div>
-      <div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div>
-      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick='markTaken(${JSON.stringify({pair:sig.pair,side:(sig.candidate||sig.side),entry:+sig.entry,sl:+sig.slPrice,tp:+sig.tpPrice,slPips: sig.slPips || sig.slPips, tpPips: sig.tpPips || sig.tpPips, lots: sig.lots || 0.01})})'>✅ Mark Taken</button>
-        <button class="ghost" onclick='openStructure(${JSON.stringify({pair:sig.pair,recent:sig.pattern?sig.struct:[]})})'>Show Structure</button>
-        <button class="ghost" onclick='runBacktest(${JSON.stringify(sig.pair)}, ${settings.backtestBars})'>🧪 Backtest</button>
-      </div>
-    </div>
-  `;
-}
+// =========================
+// Load All Signals
+// =========================
+async function loadSignals() {
+    document.getElementById("signals").innerHTML = "";
 
-/* ================== MAIN manual trigger ================== */
-const signalsContainer = document.getElementById("signalsContainer");
-const lastUpdatedEl = document.getElementById("lastUpdated");
-const backtestSummaryEl = document.getElementById("backtestSummary");
+    for (const pair of PAIRS) {
+        const candles = await fetchTwelveData(pair);
+        if (!candles) continue;
 
-async function refreshAllSignals(){
-  settings.accountBalance = +document.getElementById("accountBalance").value || settings.accountBalance;
-  settings.riskPercent = +document.getElementById("riskPercent").value || settings.riskPercent;
-  settings.slMultiplier = +document.getElementById("slMultiplier").value || settings.slMultiplier;
-  settings.maxSlPips = +document.getElementById("maxSlPips").value || settings.maxSlPips;
-  settings.backtestBars = +document.getElementById("backtestBars").value || settings.backtestBars;
-  saveSettings(settings);
+        const analysis = generateSignal(candles);
 
-  document.getElementById("refreshBtn").disabled = true;
-  document.getElementById("refreshBtn").textContent = "⏳ Fetching...";
+        // ❌ filter out weak signals
+        if (analysis.confidence < CONFIDENCE_THRESHOLD) continue;
 
-  signalsContainer.innerHTML = `<div class="small-muted">Fetching (cached) candles & computing signals... please wait</div>`;
-  const cards = [];
-  const summaryRows = [];
+        // backend backtest
+        const backtest = await fetchBacktest(pair);
 
-  for(const pair of PAIRS){
-    try{
-      // SCALP pass - fast
-      let scalp = null;
-      try{ scalp = await analyzeScalp(pair); } catch(e){ scalp = null; }
-      if(scalp){
-        scalp.internalConfidence = Math.min(95, 55 + Math.round((65 - scalp.rsi) || 0));
-        scalp.lots = scalp.lots || 0.01;
-        scalp.pair = pair;
-        const html = renderSignalCard(scalp);
-        if(html) cards.push(html);
-      }
-
-      // pace
-      await sleep(API_DELAY_MS);
-
-      // main 1H candles
-      const bars = Math.min(Math.max(settings.backtestBars || BACKTEST_LIMIT, 20), BACKTEST_LIMIT);
-      const candles = await tdCandlesCached(pair, bars, INTERVAL_MAIN).catch(()=>null);
-      if(!candles || candles.length < 20){
-        cards.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data temporarily unavailable</div></div>`);
-        continue;
-      }
-
-      const sig = buildFromCandles(pair, candles, settings);
-      if(!sig.valid){
-        cards.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">${sig.reason||'No signal'}</div></div>`);
-        continue;
-      }
-
-      // optionally run Node backtest only when BACKTEST_ENABLED and confidence pass
-      let bt = null;
-      if(BACKTEST_ENABLED && sig.internalConfidence >= 60){
-        // prefer node backtest to save direct API usage
-        const nodeResult = await fetchBacktestFromNode(sig.pair);
-        if(nodeResult && nodeResult.total > 0){
-          bt = nodeResult;
-          localStorage.setItem(BACKTEST_CACHE_KEY + "_" + sig.pair.replace("/","_"), JSON.stringify(bt));
-        } else {
-          // fallback to client simulate (light)
-          const maybe = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + sig.pair.replace("/","_")) || "null");
-          if(maybe) bt = maybe;
-        }
-      } else {
-        const maybe = JSON.parse(localStorage.getItem(BACKTEST_CACHE_KEY + "_" + sig.pair.replace("/","_")) || "null");
-        if(maybe) bt = maybe;
-      }
-
-      // combined confidence (use backtest if available)
-      const combined = bt && bt.total>0 ? Math.round((sig.internalConfidence * 0.6) + (bt.winRate * 0.4)) : sig.internalConfidence;
-      sig.internalConfidence = combined;
-      sig.lots = sig.lots || Math.max(0.01, Math.round(( (settings.accountBalance * (settings.riskPercent||1)/100) / ((sig.slPips||sig.slPips) * (sig.pair==="XAU/USD"?1.0:(sig.pair.includes("JPY")?9:10)) ))*100)/100);
-
-      const html = renderSignalCard(sig);
-      if(html) cards.push(html);
-      summaryRows.push(`${pair}: bt ${bt?bt.winRate+'%':'N/A'} (s ${bt?bt.total:0})`);
-    }catch(err){
-      console.error("pair error",pair,err);
-      cards.push(`<div class="signal-card"><div class="pair"><strong>${pair}</strong></div><div class="small-muted">Data error</div></div>`);
-      noteFetchError();
+        renderSignalCard(pair, analysis, backtest);
     }
-    // pace between pairs
-    await sleep(API_DELAY_MS);
-  }
-
-  signalsContainer.innerHTML = cards.join("");
-  document.querySelectorAll('.conf-fill').forEach(e=>{ const w=e.style.width; e.style.width='0%'; setTimeout(()=>e.style.width=w,50); });
-  lastUpdatedEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
-  backtestSummaryEl.textContent = summaryRows.join(" | ");
-  noteFetchSuccess();
-
-  document.getElementById("refreshBtn").disabled = false;
-  document.getElementById("refreshBtn").textContent = "🔄 Refresh Signals";
 }
 
-/* ================== tracker & utilities ================== */
-function markTaken(obj){
-  const t = loadTracker();
-  const rec = { pair: obj.pair, side: obj.side || obj.candidate, entry:+obj.entry, sl:+obj.sl, tp:+obj.tp, lots:obj.lots || 0.01, takenAt:new Date().toISOString(), resolved:false };
-  t.push(rec); localStorage.setItem(TRACKER_KEY, JSON.stringify(t));
-  alert("Saved trade to local tracker.");
-}
-function openTracker(){
-  const list = loadTracker();
-  const container = document.getElementById("trackerList");
-  if(!container) return;
-  if(list.length===0) container.innerHTML = "<div class='small-muted'>No tracked trades yet.</div>";
-  else container.innerHTML = list.map((t, idx)=>`<div style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.03)"><strong>${t.pair}</strong> - ${t.side} - Taken: ${new Date(t.takenAt).toLocaleString()}<br>Entry:${t.entry} SL:${t.sl} TP:${t.tp}<br><button onclick='resolveTrade(${idx})'>Resolve</button></div>`).join("");
-  document.getElementById("trackerModal").style.display = "block";
-}
-function closeTracker(){ document.getElementById("trackerModal").style.display = "none"; }
-function clearTracker(){ if(confirm("Clear tracked trades?")){ localStorage.removeItem(TRACKER_KEY); alert("Cleared"); closeTracker(); } }
-function resolveTrade(index){
-  const list = loadTracker(); if(!list[index]) return alert("Not found");
-  const outcome = prompt("Enter result: 'win' or 'loss'"); if(!outcome) return;
-  const pips = prompt("Enter pips gained (positive) or lost (positive)"); const pipsNum = parseFloat(pips);
-  if(isNaN(pipsNum)) return alert("Invalid pips");
-  list[index].resolved = true; list[index].result = outcome.toLowerCase().startsWith("w") ? "win":"loss"; list[index].pips = pipsNum; list[index].resolvedAt = new Date().toISOString();
-  localStorage.setItem(TRACKER_KEY, JSON.stringify(list));
-  alert("Saved resolution.");
-}
-
-/* ================== backtest/manual triggers ================== */
-async function runBacktest(pair, bars){
-  // If BACKTEST_ENABLED we'll ask your node backend; otherwise notify user
-  if(!BACKTEST_ENABLED){
-    alert("Backtest is disabled to save API credits. Toggle BACKTEST_ENABLED in the script to enable.");
-    return;
-  }
-  try{
-    const barsNum = Math.min(bars || settings.backtestBars || BACKTEST_LIMIT, BACKTEST_LIMIT);
-    // Ask node backend for summary
-    const nodeResult = await fetchBacktestFromNode(pair);
-    if(nodeResult && nodeResult.total > 0){
-      alert(`${pair} backtest — samples: ${nodeResult.total}\nWins: ${nodeResult.wins}\nLosses: ${nodeResult.losses}\nWinRate: ${nodeResult.winRate}%`);
-      localStorage.setItem(BACKTEST_CACHE_KEY + "_" + pair.replace("/","_"), JSON.stringify(nodeResult));
-      return;
-    }
-    alert("Backtest failed via node backend — try manual backtest or enable BACKTEST_ENABLED on server.");
-  }catch(e){ console.error(e); alert("Backtest error (see console)"); }
-}
-
-async function runBacktestForAll(){
-  if(!BACKTEST_ENABLED){
-    alert("Backtest is disabled to conserve API credits. Enable BACKTEST_ENABLED in the script to run.");
-    return;
-  }
-  const rows=[];
-  for(const p of PAIRS){
-    try{
-      const nodeRes = await fetchBacktestFromNode(p);
-      if(!nodeRes){ rows.push(`${p}: no data`); continue; }
-      rows.push(`${p}: win% ${nodeRes.winRate} (samples ${nodeRes.total})`);
-      localStorage.setItem(BACKTEST_CACHE_KEY + "_" + p.replace("/","_"), JSON.stringify(nodeRes));
-    }catch(e){ rows.push(`${p}: error`); }
-    await sleep(250);
-  }
-  document.getElementById("backtestSummary").textContent = rows.join(" | ");
-  alert("Backtest complete — summary shown on page.");
-}
-
-/* ================== misc ================== */
-function openStructure(obj){ alert(JSON.stringify(obj).slice(0,1500)); }
-function resetLocal(){ if(confirm("Reset local storage?")){ localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(TRACKER_KEY); PAIRS.forEach(p=>{ localStorage.removeItem(cacheKey(p,INTERVAL_MAIN)); localStorage.removeItem(cacheMeta(p,INTERVAL_MAIN)); localStorage.removeItem(cacheKey(p,INTERVAL_SCALP)); localStorage.removeItem(cacheMeta(p,INTERVAL_SCALP)); localStorage.removeItem(BACKTEST_CACHE_KEY + "_" + p.replace("/","_")); localStorage.removeItem("fx_lasttime_"+p.replace("/","_")); }); location.reload(); } }
-async function manualRefresh(){ await refreshAllSignals().catch(e=>console.error(e)); }
-
-/* ================== INIT (single load on open) ================== */
-(async ()=>{
-  try{ await refreshAllSignals(); }catch(e){ console.error(e); }
-  // No auto-refresh — manual only per your request
-})();
-</script>
-</body>
-</html>
+// =========================
+// Start
+// =========================
+loadSignals();
+setInterval(loadSignals, REFRESH_INTERVAL);
