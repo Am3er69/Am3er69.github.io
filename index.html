@@ -1,161 +1,175 @@
-// =========================
-// CONFIG
-// =========================
-const API_KEY = "318e2543fba14c57836adc5ce228ee7e";
-const BACKEND_URL = "http://localhost:3000/backtest"; // Node server
-const REFRESH_INTERVAL = 10000; // refresh every 10s
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Signal Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-// Don't show signals below this confidence %
-const CONFIDENCE_THRESHOLD = 65;
+<style>
+    body {
+        background: #0f0f0f;
+        color: white;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+    }
 
-// Pairs we now support
-const PAIRS = [
-    "XAU/USD", "EUR/USD", "GBP/USD", "USD/JPY", "GBP/JPY",
-    "EUR/JPY", "EUR/GBP", "GBP/AUD", "BTC/USD", "ETH/USD"
-];
+    #statusBar {
+        padding: 14px;
+        font-size: 15px;
+        background: #1c1c1c;
+        border-bottom: 1px solid #333;
+        text-align: center;
+    }
 
-// =========================
-// Fetch Market Data
-// =========================
-async function fetchTwelveData(symbol) {
+    #signalContainer {
+        padding: 15px;
+    }
+
+    .signal-card {
+        background: #1b1b1b;
+        padding: 15px;
+        margin: 12px 0;
+        border-radius: 12px;
+        border: 1px solid #333;
+        box-shadow: 0 0 12px rgba(0,0,0,0.4);
+        transition: 0.2s ease-in-out;
+    }
+
+    .signal-card:hover {
+        transform: scale(1.02);
+    }
+
+    .pair {
+        font-size: 22px;
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+
+    .direction {
+        font-size: 18px;
+        margin-top: 5px;
+        font-weight: bold;
+    }
+
+    .confidence {
+        margin-top: 8px;
+        font-size: 16px;
+        color: #d0d0d0;
+    }
+
+    .details {
+        margin-top: 12px;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #cfcfcf;
+    }
+
+    .timestamp {
+        margin-top: 10px;
+        font-size: 12px;
+        opacity: 0.6;
+        text-align: right;
+        padding-right: 4px;
+    }
+
+    .no-signal {
+        text-align: center;
+        margin-top: 40px;
+        font-size: 18px;
+        opacity: 0.7;
+    }
+</style>
+</head>
+
+<body>
+
+<div id="statusBar">Loading signals…</div>
+<div id="signalContainer"></div>
+
+<script>
+// ------------------------------
+// FRONTEND CONFIG
+// ------------------------------
+const API_URL = "http://localhost:3000";
+const MIN_CONFIDENCE = 65;
+
+// ------------------------------
+// DOM ELEMENTS
+// ------------------------------
+const signalContainer = document.getElementById("signalContainer");
+const statusBar = document.getElementById("statusBar");
+
+// ------------------------------
+// FETCH LIVE SIGNALS
+// ------------------------------
+async function fetchSignals() {
     try {
-        const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1min&apikey=${API_KEY}&outputsize=50`;
-        const res = await fetch(url);
+        statusBar.innerText = "Fetching signals…";
+
+        const res = await fetch(`${API_URL}/signals`);
         const data = await res.json();
-        return data.values ? data.values.reverse() : null;
+
+        statusBar.innerText = `Last Updated: ${new Date().toLocaleTimeString()}`;
+
+        renderSignals(data.signals || []);
+
     } catch (err) {
-        console.error("❌ API Error:", err);
-        return null;
+        console.error(err);
+        statusBar.innerText = "Error fetching signals (Backend Offline?)";
     }
 }
 
-// =========================
-// Simple Indicators
-// =========================
-function SMA(values, length) {
-    if (values.length < length) return null;
-    const slice = values.slice(-length);
-    const sum = slice.reduce((a, b) => a + parseFloat(b.close), 0);
-    return sum / length;
-}
+// ------------------------------
+// RENDER SIGNAL CARDS
+// ------------------------------
+function renderSignals(signals) {
+    signalContainer.innerHTML = "";
 
-function RSI(values, period = 14) {
-    if (values.length < period + 1) return null;
+    const filtered = signals.filter(s => s.confidence >= MIN_CONFIDENCE);
 
-    let gains = 0, losses = 0;
-    for (let i = values.length - period; i < values.length; i++) {
-        const diff = values[i].close - values[i - 1].close;
-        if (diff > 0) gains += diff;
-        else losses -= diff;
+    if (filtered.length === 0) {
+        signalContainer.innerHTML = `
+            <div class="no-signal">No high-confidence signals (≥ ${MIN_CONFIDENCE}%)</div>
+        `;
+        return;
     }
 
-    const rs = gains / (losses === 0 ? 1 : losses);
-    return 100 - 100 / (1 + rs);
+    filtered.forEach(sig => {
+        const card = document.createElement("div");
+        card.className = "signal-card";
+
+        const arrow = sig.direction === "BUY" ? "📈" : "📉";
+        const color = sig.direction === "BUY" ? "#1eae60" : "#d9534f";
+
+        card.innerHTML = `
+            <div class="pair">${sig.symbol}</div>
+            <div class="direction" style="color:${color}">${arrow} ${sig.direction}</div>
+            <div class="confidence">Confidence: <b>${sig.confidence}%</b></div>
+
+            <div class="details">
+                <div>Entry: ${sig.entry}</div>
+                <div>Stop Loss: ${sig.stopLoss}</div>
+                <div>TP1: ${sig.tp1}</div>
+                <div>TP2: ${sig.tp2}</div>
+                <div>TP3: ${sig.tp3}</div>
+            </div>
+
+            <div class="timestamp">
+                Generated: ${new Date(sig.timestamp).toLocaleTimeString()}
+            </div>
+        `;
+
+        signalContainer.appendChild(card);
+    });
 }
 
-// =========================
-// Signal Logic
-// =========================
-function generateSignal(candles) {
-    const sma5 = SMA(candles, 5);
-    const sma20 = SMA(candles, 20);
-    const rsi = RSI(candles, 14);
-    const last = candles[candles.length - 1].close;
+// ------------------------------
+// AUTO REFRESH (every 10 seconds)
+// ------------------------------
+setInterval(fetchSignals, 10000);
+fetchSignals();
+</script>
 
-    let signal = "NONE";
-    let confidence = 50;
-
-    // Trend logic
-    if (sma5 > sma20) {
-        signal = "BUY";
-        confidence += 10;
-    } else if (sma5 < sma20) {
-        signal = "SELL";
-        confidence += 10;
-    }
-
-    // RSI adjustments
-    if (rsi < 30 && signal === "BUY") confidence += 15;
-    if (rsi > 70 && signal === "SELL") confidence += 15;
-
-    return {
-        signal,
-        confidence: Math.min(confidence, 100),
-        price: last,
-        sma5,
-        sma20,
-        rsi
-    };
-}
-
-// =========================
-// Fetch Node Backtest
-// =========================
-async function fetchBacktest(symbol) {
-    try {
-        const url = `${BACKEND_URL}?symbol=${symbol}`;
-        const result = await fetch(url).then(res => res.json());
-        return result;
-    } catch (err) {
-        console.error("❌ Backtest Error:", err);
-        return null;
-    }
-}
-
-// =========================
-— Render Signals
-// =========================
-function renderSignalCard(symbol, data, backtest) {
-    const container = document.getElementById("signals");
-
-    const card = document.createElement("div");
-    card.className = "signal-card";
-
-    card.innerHTML = `
-        <h2>${symbol}</h2>
-        <p><strong>Signal:</strong> ${data.signal}</p>
-        <p><strong>Confidence:</strong> ${data.confidence}%</p>
-        <p><strong>Price:</strong> ${data.price}</p>
-
-        <hr>
-
-        <p><strong>SMA5:</strong> ${data.sma5.toFixed(2)}</p>
-        <p><strong>SMA20:</strong> ${data.sma20.toFixed(2)}</p>
-        <p><strong>RSI:</strong> ${data.rsi.toFixed(2)}</p>
-
-        <hr>
-
-        <p><strong>Backtest Wins:</strong> ${backtest?.wins ?? "?"}</p>
-        <p><strong>Backtest Losses:</strong> ${backtest?.losses ?? "?"}</p>
-    `;
-
-    container.appendChild(card);
-}
-
-// =========================
-// Load All Signals
-// =========================
-async function loadSignals() {
-    document.getElementById("signals").innerHTML = "";
-
-    for (const pair of PAIRS) {
-        const candles = await fetchTwelveData(pair);
-        if (!candles) continue;
-
-        const analysis = generateSignal(candles);
-
-        // ❌ filter out weak signals
-        if (analysis.confidence < CONFIDENCE_THRESHOLD) continue;
-
-        // backend backtest
-        const backtest = await fetchBacktest(pair);
-
-        renderSignalCard(pair, analysis, backtest);
-    }
-}
-
-// =========================
-// Start
-// =========================
-loadSignals();
-setInterval(loadSignals, REFRESH_INTERVAL);
+</body>
+</html>
