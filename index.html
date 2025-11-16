@@ -88,11 +88,18 @@
 <div id="signalContainer"></div>
 
 <script>
+/*
+  Updated frontend: points to your Render backend.
+  Make sure your backend exposes GET /signals returning:
+  { signals: [ { symbol, direction, confidence, entry, stopLoss, tp1, tp2, tp3, timestamp }, ... ] }
+*/
+
 // ------------------------------
 // FRONTEND CONFIG
 // ------------------------------
-const API_URL = "http://localhost:3000";
+const API_URL = "https://backtesting-vlun.onrender.com"; // <-- updated to your Render URL
 const MIN_CONFIDENCE = 65;
+const REFRESH_MS = 10000; // 10s auto-refresh
 
 // ------------------------------
 // DOM ELEMENTS
@@ -108,15 +115,19 @@ async function fetchSignals() {
         statusBar.innerText = "Fetching signals…";
 
         const res = await fetch(`${API_URL}/signals`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
         statusBar.innerText = `Last Updated: ${new Date().toLocaleTimeString()}`;
 
-        renderSignals(data.signals || []);
+        // backend may return signals in different property names; try a few safe fallbacks
+        const signals = data.signals || data.results || data || [];
+        renderSignals(signals);
 
     } catch (err) {
         console.error(err);
         statusBar.innerText = "Error fetching signals (Backend Offline?)";
+        signalContainer.innerHTML = `<div class="no-signal">Backend offline or returned invalid data.</div>`;
     }
 }
 
@@ -126,7 +137,20 @@ async function fetchSignals() {
 function renderSignals(signals) {
     signalContainer.innerHTML = "";
 
-    const filtered = signals.filter(s => s.confidence >= MIN_CONFIDENCE);
+    // normalize incoming signal objects (be forgiving)
+    const normalized = signals.map(s => ({
+        symbol: s.symbol || s.pair || s.symbolName || s.key || "unknown",
+        direction: (s.direction || s.signal || s.candidate || "NONE"),
+        confidence: Number(s.confidence ?? s.combinedConfidence ?? s.internalConfidence ?? 0),
+        entry: s.entry ?? s.price ?? "—",
+        stopLoss: s.stopLoss ?? s.slPrice ?? s.sl ?? "—",
+        tp1: s.tp1 ?? s.tpPrice ?? s.tp ?? "—",
+        tp2: s.tp2 ?? s.tp2 ?? "—",
+        tp3: s.tp3 ?? s.tp3 ?? "—",
+        timestamp: s.timestamp || s.lastCandleTime || Date.now()
+    }));
+
+    const filtered = normalized.filter(s => s.confidence >= MIN_CONFIDENCE);
 
     if (filtered.length === 0) {
         signalContainer.innerHTML = `
@@ -139,7 +163,7 @@ function renderSignals(signals) {
         const card = document.createElement("div");
         card.className = "signal-card";
 
-        const arrow = sig.direction === "BUY" ? "📈" : "📉";
+        const arrow = sig.direction === "BUY" ? "📈" : sig.direction === "SELL" ? "📉" : "⚪";
         const color = sig.direction === "BUY" ? "#1eae60" : "#d9534f";
 
         card.innerHTML = `
@@ -148,15 +172,15 @@ function renderSignals(signals) {
             <div class="confidence">Confidence: <b>${sig.confidence}%</b></div>
 
             <div class="details">
-                <div>Entry: ${sig.entry}</div>
-                <div>Stop Loss: ${sig.stopLoss}</div>
-                <div>TP1: ${sig.tp1}</div>
-                <div>TP2: ${sig.tp2}</div>
-                <div>TP3: ${sig.tp3}</div>
+                <div>Entry: ${formatNumber(sig.entry)}</div>
+                <div>Stop Loss: ${formatNumber(sig.stopLoss)}</div>
+                <div>TP1: ${formatNumber(sig.tp1)}</div>
+                <div>TP2: ${formatNumber(sig.tp2)}</div>
+                <div>TP3: ${formatNumber(sig.tp3)}</div>
             </div>
 
             <div class="timestamp">
-                Generated: ${new Date(sig.timestamp).toLocaleTimeString()}
+                Generated: ${new Date(sig.timestamp).toLocaleString()}
             </div>
         `;
 
@@ -164,10 +188,19 @@ function renderSignals(signals) {
     });
 }
 
+function formatNumber(v){
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "number") return v.toFixed((v % 1 === 0) ? 0 : 5);
+    // try numeric conversion for strings
+    const n = Number(v);
+    if (!isNaN(n)) return n.toFixed((n % 1 === 0) ? 0 : 5);
+    return v;
+}
+
 // ------------------------------
-// AUTO REFRESH (every 10 seconds)
+// AUTO REFRESH
 // ------------------------------
-setInterval(fetchSignals, 10000);
+setInterval(fetchSignals, REFRESH_MS);
 fetchSignals();
 </script>
 
